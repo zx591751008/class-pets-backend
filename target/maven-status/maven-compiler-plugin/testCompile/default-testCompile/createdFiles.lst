@@ -1,0 +1,5 @@
+com\classpets\backend\common\GlobalExceptionHandlerTest.class
+com\classpets\backend\controller\AuthControllerTest.class
+com\classpets\backend\controller\HealthControllerTest.class
+com\classpets\backend\sync\SyncEventServiceTest.class
+com\classpets\backend\auth\security\JwtUtilTest.class

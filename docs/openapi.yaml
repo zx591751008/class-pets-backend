@@ -1,0 +1,1078 @@
+openapi: 3.0.3
+info:
+  title: Class Pets API
+  version: 1.0.0
+  description: 班级宠物积分系统接口文档（Spring Boot + MyBatis-Plus + MySQL）。注意：本文档含规划接口与已实现接口，联调请以 PROJECT_STATUS.md 中“当前接口（真实）”为准。
+servers:
+  - url: http://localhost:8080/api/v1
+
+security:
+  - bearerAuth: []
+
+paths:
+  /health:
+    get:
+      security: []
+      tags: [Health]
+      responses:
+        "200":
+          description: ok
+
+  /auth/register:
+    post:
+      security: []
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        "200":
+          description: ok
+
+  /auth/login:
+    post:
+      security: []
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        "200":
+          description: ok
+
+  /auth/logout:
+    post:
+      tags: [Auth]
+      responses:
+        "200": { description: ok }
+
+  /auth/me:
+    get:
+      tags: [Auth]
+      responses:
+        "200": { description: ok }
+
+  /admin/activation-codes:
+    get:
+      tags: [AdminActivationCode]
+      parameters:
+        - in: query
+          name: used
+          schema: { type: boolean }
+        - in: query
+          name: page
+          schema: { type: integer, default: 1 }
+        - in: query
+          name: size
+          schema: { type: integer, default: 20 }
+      responses:
+        "200": { description: ok }
+    post:
+      tags: [AdminActivationCode]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ActivationCodeGenerateRequest'
+      responses:
+        "200": { description: ok }
+
+  /admin/activation-codes/{id}/disable:
+    patch:
+      tags: [AdminActivationCode]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer, format: int64 }
+      responses:
+        "200": { description: ok }
+
+  /classes:
+    get:
+      tags: [Class]
+      responses:
+        "200": { description: ok }
+    post:
+      tags: [Class]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClassCreateRequest'
+      responses:
+        "200": { description: ok }
+
+  /classes/{classId}:
+    get:
+      tags: [Class]
+      parameters: [ { $ref: '#/components/parameters/ClassId' } ]
+      responses:
+        "200": { description: ok }
+    put:
+      tags: [Class]
+      parameters: [ { $ref: '#/components/parameters/ClassId' } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClassUpdateRequest'
+      responses:
+        "200": { description: ok }
+    delete:
+      tags: [Class]
+      parameters: [ { $ref: '#/components/parameters/ClassId' } ]
+      responses:
+        "200": { description: ok }
+
+  /classes/{classId}/config:
+    get:
+      tags: [ClassConfig]
+      parameters: [ { $ref: '#/components/parameters/ClassId' } ]
+      responses:
+        "200": { description: ok }
+    put:
+      tags: [ClassConfig]
+      parameters: [ { $ref: '#/components/parameters/ClassId' } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClassConfigUpdateRequest'
+      responses:
+        "200": { description: ok }
+
+  /classes/{classId}/students:
+    get:
+      tags: [Student]
+      parameters:
+        - { $ref: '#/components/parameters/ClassId' }
+        - in: query
+          name: page
+          schema: { type: integer, default: 1 }
+        - in: query
+          name: size
+          schema: { type: integer, default: 20 }
+        - in: query
+          name: keyword
+          schema: { type: string }
+        - in: query
+          name: groupId
+          schema: { type: integer, format: int64 }
+        - in: query
+          name: sort
+          schema: { type: string, enum: [points_desc, points_asc, name, update_desc] }
+      responses:
+        "200": { description: ok }
+    post:
+      tags: [Student]
+      parameters: [ { $ref: '#/components/parameters/ClassId' } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StudentCreateRequest'
+      responses:
+        "200": { description: ok }
+
+  /students/{studentId}:
+    get:
+      tags: [Student]
+      parameters: [ { $ref: '#/components/parameters/StudentId' } ]
+      responses:
+        "200": { description: ok }
+    put:
+      tags: [Student]
+      parameters: [ { $ref: '#/components/parameters/StudentId' } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StudentUpdateRequest'
+      responses:
+        "200": { description: ok }
+    delete:
+      tags: [Student]
+      parameters: [ { $ref: '#/components/parameters/StudentId' } ]
+      responses:
+        "200": { description: ok }
+
+  /students/{studentId}/score:
+    post:
+      tags: [StudentEvent]
+      parameters: [ { $ref: '#/components/parameters/StudentId' } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StudentScoreRequest'
+      responses:
+        "200": { description: ok }
+
+  /classes/{classId}/students/batch-score:
+    post:
+      tags: [StudentEvent]
+      parameters: [ { $ref: '#/components/parameters/ClassId' } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BatchScoreRequest'
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              example:
+                code: 0
+                message: "OK"
+                data:
+                  total: 3
+                  successCount: 3
+                  failedCount: 0
+                  successIds: [1001, 1002, 1003]
+
+  /students/{studentId}/events:
+    get:
+      tags: [StudentEvent]
+      parameters:
+        - { $ref: '#/components/parameters/StudentId' }
+        - in: query
+          name: page
+          schema: { type: integer, default: 1 }
+        - in: query
+          name: size
+          schema: { type: integer, default: 20 }
+        - in: query
+          name: from
+          schema: { type: integer, format: int64 }
+        - in: query
+          name: to
+          schema: { type: integer, format: int64 }
+        - in: query
+          name: revoked
+          schema: { type: boolean }
+      responses:
+        "200": { description: ok }
+
+  /student-events/{eventId}/revoke:
+    post:
+      tags: [StudentEvent]
+      parameters: [ { $ref: '#/components/parameters/EventId' } ]
+      responses:
+        "200": { description: ok }
+
+  /classes/{classId}/groups:
+    get:
+      tags: [Group]
+      parameters: [ { $ref: '#/components/parameters/ClassId' } ]
+      responses:
+        "200": { description: ok }
+    post:
+      tags: [Group]
+      parameters: [ { $ref: '#/components/parameters/ClassId' } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GroupCreateRequest'
+      responses:
+        "200": { description: ok }
+
+  /groups/{groupId}:
+    put:
+      tags: [Group]
+      parameters: [ { $ref: '#/components/parameters/GroupId' } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GroupUpdateRequest'
+      responses:
+        "200": { description: ok }
+    delete:
+      tags: [Group]
+      parameters: [ { $ref: '#/components/parameters/GroupId' } ]
+      responses:
+        "200": { description: ok }
+
+  /groups/{groupId}/score:
+    post:
+      tags: [GroupEvent]
+      parameters: [ { $ref: '#/components/parameters/GroupId' } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GroupScoreRequest'
+      responses:
+        "200": { description: ok }
+
+  /classes/{classId}/rules:
+    get:
+      tags: [Rule]
+      parameters: [ { $ref: '#/components/parameters/ClassId' } ]
+      responses:
+        "200": { description: ok }
+    post:
+      tags: [Rule]
+      parameters: [ { $ref: '#/components/parameters/ClassId' } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RuleCreateRequest'
+      responses:
+        "200": { description: ok }
+
+  /teacher/profile:
+    put:
+      tags: [Teacher]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TeacherProfileUpdateRequest'
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              example:
+                code: 0
+                message: "OK"
+                data:
+                  id: 10001
+                  username: "teacher_zhang"
+                  nickname: "张老师"
+
+  /classes/{classId}/growth/config:
+    get:
+      tags: [Growth]
+      parameters: [ { $ref: '#/components/parameters/ClassId' } ]
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              example:
+                code: 0
+                message: "OK"
+                data:
+                  customized: true
+                  overflowStep: 120
+                  expGainRatio: 10
+                  levelThresholds: [0, 100, 260, 480]
+                  levelItems:
+                    - level: 1
+                      name: "萌芽"
+                      threshold: 0
+                    - level: 2
+                      name: "成长"
+                      threshold: 100
+                  evolution:
+                    stage1MaxLevel: 3
+                    stage2MaxLevel: 6
+                    stage3StartLevel: 7
+                  petRoutes:
+                    - id: "cat_route"
+                      name: "喵咪路线"
+                      enabled: true
+                      stages:
+                        - stage: 1
+                          image: "/uploads/pets/cat-stage1.png"
+                        - stage: 2
+                          image: "/uploads/pets/cat-stage2.png"
+    put:
+      tags: [Growth]
+      parameters: [ { $ref: '#/components/parameters/ClassId' } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GrowthConfigUpdateRequest'
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              example:
+                code: 0
+                message: "OK"
+                data:
+                  customized: true
+                  overflowStep: 120
+                  expGainRatio: 10
+                  levelThresholds: [0, 100, 260, 480]
+
+  /classes/{classId}/growth/recalculate:
+    post:
+      tags: [Growth]
+      parameters: [ { $ref: '#/components/parameters/ClassId' } ]
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              example:
+                code: 0
+                message: "OK"
+                data: null
+
+  /classes/{classId}/data/export/students:
+    get:
+      tags: [Data]
+      parameters: [ { $ref: '#/components/parameters/ClassId' } ]
+      responses:
+        "200": { description: ok }
+
+  /classes/{classId}/data/export/rules:
+    get:
+      tags: [Data]
+      parameters: [ { $ref: '#/components/parameters/ClassId' } ]
+      responses:
+        "200": { description: ok }
+
+  /classes/{classId}/data/export/events:
+    get:
+      tags: [Data]
+      parameters:
+        - { $ref: '#/components/parameters/ClassId' }
+        - in: query
+          name: from
+          schema: { type: integer, format: int64 }
+          example: 1738368000000
+        - in: query
+          name: to
+          schema: { type: integer, format: int64 }
+          example: 1738972799000
+      responses:
+        "200": { description: ok }
+
+  /classes/{classId}/data/import/students/preview:
+    post:
+      tags: [Data]
+      parameters: [ { $ref: '#/components/parameters/ClassId' } ]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              example:
+                code: 0
+                message: "OK"
+                data:
+                  totalRows: 3
+                  validRows: 2
+                  errorRows: 1
+                  rows:
+                    - lineNo: 2
+                      name: "张小明"
+                      studentNo: "202601"
+                      gender: "男"
+                      groupName: "火箭队"
+                      points: "10"
+                      error: ""
+                    - lineNo: 3
+                      name: ""
+                      studentNo: "202602"
+                      gender: "女"
+                      groupName: "火箭队"
+                      points: "8"
+                      error: "姓名不能为空"
+
+  /classes/{classId}/data/import/students/commit:
+    post:
+      tags: [Data]
+      parameters: [ { $ref: '#/components/parameters/ClassId' } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StudentImportCommitRequest'
+            example:
+              rows:
+                - lineNo: 2
+                  name: "张小明"
+                  studentNo: "202601"
+                  gender: "男"
+                  groupName: "火箭队"
+                  points: "10"
+                  error: ""
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              example:
+                code: 0
+                message: "OK"
+                data:
+                  total: 3
+                  created: 2
+                  updated: 0
+                  failed: 1
+                  errors:
+                    - lineNo: 3
+                      studentNo: "202602"
+                      message: "姓名不能为空"
+
+  /classes/{classId}/data/import/students/errors-export:
+    post:
+      tags: [Data]
+      parameters: [ { $ref: '#/components/parameters/ClassId' } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StudentImportCommitRequest'
+      responses:
+        "200": { description: ok }
+
+  /classes/{classId}/data/import/students/template:
+    get:
+      tags: [Data]
+      parameters: [ { $ref: '#/components/parameters/ClassId' } ]
+      responses:
+        "200": { description: ok }
+
+  /classes/{classId}/data/import/rules/preview:
+    post:
+      tags: [Data]
+      parameters: [ { $ref: '#/components/parameters/ClassId' } ]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              example:
+                code: 0
+                message: "OK"
+                data:
+                  totalRows: 3
+                  validRows: 2
+                  errorRows: 1
+                  rows:
+                    - lineNo: 2
+                      content: "课堂积极发言"
+                      points: "2"
+                      type: "加分"
+                      targetType: "个人"
+                      category: "课堂表现"
+                      cooldownHours: "0"
+                      stackable: "是"
+                      error: ""
+                    - lineNo: 3
+                      content: ""
+                      points: "3"
+                      type: "扣分"
+                      targetType: "小组"
+                      category: "作业管理"
+                      cooldownHours: "24"
+                      stackable: "否"
+                      error: "规则内容不能为空"
+
+  /classes/{classId}/data/import/rules/commit:
+    post:
+      tags: [Data]
+      parameters: [ { $ref: '#/components/parameters/ClassId' } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RuleImportCommitRequest'
+            example:
+              conflictPolicy: overwrite
+              rows:
+                - lineNo: 2
+                  content: "课堂积极发言"
+                  points: "2"
+                  type: "加分"
+                  targetType: "个人"
+                  category: "课堂表现"
+                  cooldownHours: "0"
+                  stackable: "是"
+                  error: ""
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              example:
+                code: 0
+                message: "OK"
+                data:
+                  total: 4
+                  created: 2
+                  updated: 1
+                  skipped: 0
+                  failed: 1
+                  errors:
+                    - lineNo: 5
+                      content: "作业迟交"
+                      message: "分值必须大于0"
+
+  /classes/{classId}/data/import/rules/errors-export:
+    post:
+      tags: [Data]
+      parameters: [ { $ref: '#/components/parameters/ClassId' } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RuleImportCommitRequest'
+      responses:
+        "200": { description: ok }
+
+  /classes/{classId}/data/import/rules/template:
+    get:
+      tags: [Data]
+      parameters: [ { $ref: '#/components/parameters/ClassId' } ]
+      responses:
+        "200": { description: ok }
+
+  /classes/{classId}/store/items:
+    get:
+      tags: [Store]
+      parameters: [ { $ref: '#/components/parameters/ClassId' } ]
+      responses:
+        "200": { description: ok }
+    post:
+      tags: [Store]
+      parameters: [ { $ref: '#/components/parameters/ClassId' } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StoreItemCreateRequest'
+      responses:
+        "200": { description: ok }
+
+  /store/items/{itemId}:
+    put:
+      tags: [Store]
+      parameters:
+        - in: path
+          name: itemId
+          required: true
+          schema: { type: integer, format: int64 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StoreItemUpdateRequest'
+      responses:
+        "200": { description: ok }
+    delete:
+      tags: [Store]
+      parameters:
+        - in: path
+          name: itemId
+          required: true
+          schema: { type: integer, format: int64 }
+      responses:
+        "200": { description: ok }
+
+  /store/redeem:
+    post:
+      tags: [Store]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StoreRedeemRequest'
+      responses:
+        "200": { description: ok }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    ClassId: { in: path, name: classId, required: true, schema: { type: integer, format: int64 } }
+    StudentId: { in: path, name: studentId, required: true, schema: { type: integer, format: int64 } }
+    GroupId: { in: path, name: groupId, required: true, schema: { type: integer, format: int64 } }
+    EventId: { in: path, name: eventId, required: true, schema: { type: integer, format: int64 } }
+
+  schemas:
+    RegisterRequest:
+      type: object
+      required: [username, password, activationCode]
+      properties:
+        username: { type: string }
+        password: { type: string }
+        nickname: { type: string }
+        activationCode: { type: string }
+
+    LoginRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username: { type: string }
+        password: { type: string }
+
+    TeacherProfileUpdateRequest:
+      type: object
+      properties:
+        nickname: { type: string, maxLength: 50 }
+        password: { type: string, minLength: 6, maxLength: 32 }
+        activationCode: { type: string }
+      example:
+        nickname: "王老师"
+        password: "newPass123"
+        activationCode: "AG2026ABCD"
+
+    ActivationCodeGenerateRequest:
+      type: object
+      required: [count]
+      properties:
+        count: { type: integer, minimum: 1, maximum: 10000 }
+        prefix: { type: string, default: AG }
+        length: { type: integer, default: 12 }
+
+    ClassCreateRequest:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string }
+        teacherName: { type: string }
+
+    ClassUpdateRequest:
+      type: object
+      properties:
+        name: { type: string }
+        teacherName: { type: string }
+
+    ClassConfigUpdateRequest:
+      type: object
+      properties:
+        levels: { type: array, items: { type: object } }
+        pets: { type: array, items: { type: object } }
+        evolution: { type: object }
+
+    GrowthConfigUpdateRequest:
+      type: object
+      properties:
+        levelItems:
+          type: array
+          items:
+            $ref: '#/components/schemas/GrowthLevelItem'
+        levelThresholds:
+          type: array
+          items: { type: integer }
+        overflowStep: { type: integer }
+        expGainRatio: { type: number, format: double }
+        evolution:
+          $ref: '#/components/schemas/GrowthEvolutionConfig'
+        petRoutes:
+          type: array
+          items:
+            $ref: '#/components/schemas/GrowthPetRoute'
+        recalculate: { type: boolean, default: true }
+      example:
+        levelItems:
+          - level: 1
+            name: "萌芽"
+            threshold: 0
+          - level: 2
+            name: "成长"
+            threshold: 100
+          - level: 3
+            name: "进阶"
+            threshold: 260
+        overflowStep: 120
+        expGainRatio: 10
+        evolution:
+          stage1MaxLevel: 3
+          stage2MaxLevel: 6
+          stage3StartLevel: 7
+        petRoutes:
+          - id: "cat_route"
+            name: "喵咪路线"
+            enabled: true
+            stages:
+              - stage: 1
+                image: "/uploads/pets/cat-stage1.png"
+              - stage: 2
+                image: "/uploads/pets/cat-stage2.png"
+              - stage: 3
+                image: "/uploads/pets/cat-stage3.png"
+        recalculate: true
+
+    GrowthLevelItem:
+      type: object
+      properties:
+        level: { type: integer }
+        name: { type: string }
+        threshold: { type: integer }
+
+    GrowthEvolutionConfig:
+      type: object
+      properties:
+        stage1MaxLevel: { type: integer }
+        stage2MaxLevel: { type: integer }
+        stage3StartLevel: { type: integer }
+
+    GrowthPetRoute:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        enabled: { type: boolean }
+        stages:
+          type: array
+          items:
+            $ref: '#/components/schemas/GrowthPetStage'
+
+    GrowthPetStage:
+      type: object
+      properties:
+        stage: { type: integer }
+        image: { type: string }
+
+    StudentCreateRequest:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string }
+        studentNo: { type: string }
+        gender: { type: string, enum: [boy, girl, unknown] }
+        groupId: { type: integer, format: int64 }
+        avatarImage: { type: string }
+        petId: { type: string }
+
+    StudentUpdateRequest:
+      allOf:
+        - $ref: '#/components/schemas/StudentCreateRequest'
+        - type: object
+          properties:
+            totalPoints: { type: integer }
+            redeemPoints: { type: integer }
+            exp: { type: integer }
+            level: { type: integer }
+            title: { type: string }
+
+    StudentScoreRequest:
+      type: object
+      required: [mode]
+      properties:
+        mode: { type: string, enum: [add, deduct] }
+        ruleId: { type: integer, format: int64 }
+        points: { type: integer }
+        reason: { type: string }
+        note: { type: string }
+        context: { type: string, enum: [manual, roll], default: manual }
+
+    BatchScoreRequest:
+      type: object
+      required: [studentIds, mode, points]
+      properties:
+        studentIds: { type: array, items: { type: integer, format: int64 } }
+        mode: { type: string, enum: [add, deduct] }
+        points: { type: integer }
+        reason: { type: string }
+      example:
+        studentIds: [1001, 1002, 1003]
+        mode: add
+        points: 2
+        reason: "课堂积极参与"
+
+    BatchScoreResultVO:
+      type: object
+      properties:
+        total: { type: integer }
+        successCount: { type: integer }
+        failedCount: { type: integer }
+        successIds:
+          type: array
+          items: { type: integer, format: int64 }
+
+    StudentImportCommitRequest:
+      type: object
+      required: [rows]
+      properties:
+        rows:
+          type: array
+          items:
+            $ref: '#/components/schemas/StudentImportRow'
+      example:
+        rows:
+          - lineNo: 2
+            name: "张小明"
+            studentNo: "202601"
+            gender: "男"
+            groupName: "火箭队"
+            points: "10"
+            error: ""
+          - lineNo: 3
+            name: ""
+            studentNo: "202602"
+            gender: "女"
+            groupName: "火箭队"
+            points: "8"
+            error: "姓名不能为空"
+
+    StudentImportRow:
+      type: object
+      properties:
+        lineNo: { type: integer }
+        name: { type: string }
+        studentNo: { type: string }
+        gender: { type: string }
+        groupName: { type: string }
+        points: { type: string }
+        error: { type: string }
+
+    RuleImportCommitRequest:
+      type: object
+      required: [rows]
+      properties:
+        rows:
+          type: array
+          items:
+            $ref: '#/components/schemas/RuleImportRow'
+        conflictPolicy:
+          type: string
+          enum: [skip, overwrite]
+          default: skip
+      example:
+        conflictPolicy: skip
+        rows:
+          - lineNo: 2
+            content: "课堂积极发言"
+            points: "2"
+            type: "加分"
+            targetType: "个人"
+            category: "课堂表现"
+            cooldownHours: "0"
+            stackable: "是"
+            error: ""
+          - lineNo: 3
+            content: ""
+            points: "3"
+            type: "扣分"
+            targetType: "小组"
+            category: "作业管理"
+            cooldownHours: "24"
+            stackable: "否"
+            error: "规则内容不能为空"
+
+    RuleImportRow:
+      type: object
+      properties:
+        lineNo: { type: integer }
+        content: { type: string }
+        points: { type: string }
+        type: { type: string }
+        targetType: { type: string }
+        category: { type: string }
+        cooldownHours: { type: string }
+        stackable: { type: string }
+        error: { type: string }
+
+    GroupCreateRequest:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string }
+        icon: { type: string }
+        note: { type: string }
+        points: { type: integer }
+
+    GroupUpdateRequest:
+      allOf:
+        - $ref: '#/components/schemas/GroupCreateRequest'
+
+    GroupScoreRequest:
+      type: object
+      required: [mode, points, reason]
+      properties:
+        mode: { type: string, enum: [add, deduct] }
+        points: { type: integer }
+        reason: { type: string }
+        note: { type: string }
+
+    RuleCreateRequest:
+      type: object
+      required: [content, points, type]
+      properties:
+        content: { type: string }
+        points: { type: integer }
+        type: { type: string, enum: [add, deduct] }
+        category: { type: string }
+        enabled: { type: boolean, default: true }
+        cooldownHours: { type: number, format: float, default: 0 }
+        stackable: { type: boolean, default: true }
+
+    StoreItemCreateRequest:
+      type: object
+      required: [name, cost, stock]
+      properties:
+        name: { type: string }
+        cost: { type: integer }
+        stock: { type: integer }
+        icon: { type: string }
+        isActive: { type: boolean, default: true }
+
+    StoreItemUpdateRequest:
+      allOf:
+        - $ref: '#/components/schemas/StoreItemCreateRequest'
+
+    StoreRedeemRequest:
+      type: object
+      required: [studentId, itemId]
+      properties:
+        studentId: { type: integer, format: int64 }
+        itemId: { type: integer, format: int64 }

@@ -1,0 +1,181 @@
+{
+  "info": {
+    "name": "Class Pets API v1",
+    "_postman_id": "5f6dc6ff-a338-4a7d-9db6-8b6408d8f1ae",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:8080/api/v1" },
+    { "key": "token", "value": "" },
+    { "key": "classId", "value": "1" },
+    { "key": "studentId", "value": "1" },
+    { "key": "groupId", "value": "1" },
+    { "key": "itemId", "value": "1" }
+  ],
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Register",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/auth/register",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"username\":\"teacher001\",\"password\":\"12345678\",\"nickname\":\"王老师\",\"activationCode\":\"AG-XXXX-XXXX\"}"
+            }
+          }
+        },
+        {
+          "name": "Login",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/auth/login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"username\":\"teacher001\",\"password\":\"12345678\"}"
+            }
+          }
+        },
+        {
+          "name": "Me",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": "{{baseUrl}}/auth/me"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Class",
+      "item": [
+        {
+          "name": "Class List",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": "{{baseUrl}}/classes"
+          }
+        },
+        {
+          "name": "Create Class",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{baseUrl}}/classes",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\":\"三年二班\",\"teacherName\":\"王老师\"}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Student",
+      "item": [
+        {
+          "name": "Student Page",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": "{{baseUrl}}/classes/{{classId}}/students?page=1&size=20"
+          }
+        },
+        {
+          "name": "Create Student",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{baseUrl}}/classes/{{classId}}/students",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\":\"张三\",\"studentNo\":\"01\",\"gender\":\"boy\",\"groupId\":1,\"petId\":\"dragon\"}"
+            }
+          }
+        },
+        {
+          "name": "Student Score",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{baseUrl}}/students/{{studentId}}/score",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"mode\":\"add\",\"points\":5,\"reason\":\"课堂表现\",\"note\":\"回答积极\",\"context\":\"manual\"}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Group",
+      "item": [
+        {
+          "name": "Group List",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": "{{baseUrl}}/classes/{{classId}}/groups"
+          }
+        },
+        {
+          "name": "Group Score",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{baseUrl}}/groups/{{groupId}}/score",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"mode\":\"add\",\"points\":3,\"reason\":\"团队协作\",\"note\":\"\"}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Shop",
+      "item": [
+        {
+          "name": "Item List",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": "{{baseUrl}}/classes/{{classId}}/shop-items"
+          }
+        },
+        {
+          "name": "Redeem",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{baseUrl}}/shop-items/{{itemId}}/redeem",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"studentId\":1,\"qty\":1}"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
