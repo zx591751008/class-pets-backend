@@ -26,10 +26,17 @@ public interface StudentEventMapper extends BaseMapper<StudentEvent> {
 
         @Select("SELECT se.student_id as studentId, SUM(se.change_value) as total " +
                         "FROM student_event se " +
-                        "INNER JOIN rule_info ri ON se.reason = ri.content AND se.class_id = ri.class_id " +
                         "WHERE se.class_id = #{classId} " +
-                        "AND ri.category = #{category} " +
                         "AND se.revoked = 0 " +
+                        "AND ((se.rule_id IS NOT NULL AND EXISTS (" +
+                        "  SELECT 1 FROM rule_info ri " +
+                        "  WHERE ri.id = se.rule_id AND ri.class_id = se.class_id " +
+                        "    AND ri.target_type = 0 AND ri.category = #{category}" +
+                        ")) OR (se.rule_id IS NULL AND EXISTS (" +
+                        "  SELECT 1 FROM rule_info ri2 " +
+                        "  WHERE ri2.class_id = se.class_id AND ri2.content = se.reason " +
+                        "    AND ri2.target_type = 0 AND ri2.category = #{category}" +
+                        "))) " +
                         "GROUP BY se.student_id " +
                         "ORDER BY total DESC")
         List<Map<String, Object>> sumScoreByCategory(@Param("classId") Long classId,
@@ -37,12 +44,19 @@ public interface StudentEventMapper extends BaseMapper<StudentEvent> {
 
         @Select("SELECT se.student_id as studentId, SUM(se.change_value) as total " +
                         "FROM student_event se " +
-                        "INNER JOIN rule_info ri ON se.reason = ri.content AND se.class_id = ri.class_id " +
                         "WHERE se.class_id = #{classId} " +
-                        "AND ri.category = #{category} " +
                         "AND se.timestamp >= #{startTime} " +
                         "AND se.timestamp <= #{endTime} " +
                         "AND se.revoked = 0 " +
+                        "AND ((se.rule_id IS NOT NULL AND EXISTS (" +
+                        "  SELECT 1 FROM rule_info ri " +
+                        "  WHERE ri.id = se.rule_id AND ri.class_id = se.class_id " +
+                        "    AND ri.target_type = 0 AND ri.category = #{category}" +
+                        ")) OR (se.rule_id IS NULL AND EXISTS (" +
+                        "  SELECT 1 FROM rule_info ri2 " +
+                        "  WHERE ri2.class_id = se.class_id AND ri2.content = se.reason " +
+                        "    AND ri2.target_type = 0 AND ri2.category = #{category}" +
+                        "))) " +
                         "GROUP BY se.student_id " +
                         "ORDER BY total DESC")
         List<Map<String, Object>> sumScoreByCategoryAndTimeRange(@Param("classId") Long classId,
@@ -50,15 +64,24 @@ public interface StudentEventMapper extends BaseMapper<StudentEvent> {
                         @Param("startTime") Long startTime,
                         @Param("endTime") Long endTime);
 
-        @Select("SELECT ri.category as name, SUM(se.change_value) as total " +
-                        "FROM student_event se " +
-                        "INNER JOIN rule_info ri ON se.reason = ri.content AND se.class_id = ri.class_id " +
-                        "WHERE se.class_id = #{classId} " +
-                        "AND se.revoked = 0 " +
-                        "AND ri.category IS NOT NULL " +
-                        "AND ri.category <> '' " +
-                        "AND ri.category <> '通用类型' " +
-                        "GROUP BY ri.category " +
+        @Select("SELECT x.category as name, SUM(x.change_value) as total " +
+                        "FROM (" +
+                        "  SELECT se.change_value, CASE " +
+                        "    WHEN se.rule_id IS NOT NULL THEN (" +
+                        "      SELECT ri.category FROM rule_info ri " +
+                        "      WHERE ri.id = se.rule_id AND ri.class_id = se.class_id AND ri.target_type = 0 LIMIT 1" +
+                        "    ) ELSE (" +
+                        "      SELECT ri2.category FROM rule_info ri2 " +
+                        "      WHERE ri2.class_id = se.class_id AND ri2.content = se.reason AND ri2.target_type = 0 " +
+                        "      ORDER BY ri2.id ASC LIMIT 1" +
+                        "    ) END AS category " +
+                        "  FROM student_event se " +
+                        "  WHERE se.class_id = #{classId} AND se.revoked = 0" +
+                        ") x " +
+                        "WHERE x.category IS NOT NULL " +
+                        "AND x.category <> '' " +
+                        "AND x.category <> '通用类型' " +
+                        "GROUP BY x.category " +
                         "ORDER BY total DESC")
         List<Map<String, Object>> sumScoreByCategoryGroup(@Param("classId") Long classId);
 

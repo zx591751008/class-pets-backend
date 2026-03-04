@@ -59,6 +59,10 @@ public class HistoryUndoService {
                 || event.getNote().contains("undoRedemptionRecordId="))) {
             throw new BizException(40001, "撤销操作记录不支持再次撤销");
         }
+        if ((event.getReason() != null && event.getReason().contains("遗忘果实"))
+                || (event.getNote() != null && event.getNote().contains("noUndo=1"))) {
+            throw new BizException(40001, "该记录不可撤销");
+        }
 
         Long redemptionRecordId = parseLongFromNote(event.getNote(), "redeemRecordId=");
         if (redemptionRecordId != null) {
@@ -89,31 +93,31 @@ public class HistoryUndoService {
 
         int changeValue = event.getChangeValue() == null ? 0 : event.getChangeValue();
         int redeemChange = event.getRedeemChange() == null ? 0 : event.getRedeemChange();
+        int expChange = event.getExpChange() == null ? 0 : event.getExpChange();
+        boolean expExact = event.getNote() != null && event.getNote().contains("expExact=1");
 
         student.setTotalPoints((student.getTotalPoints() == null ? 0 : student.getTotalPoints()) - changeValue);
         int nextRedeem = (student.getRedeemPoints() == null ? 0 : student.getRedeemPoints()) - redeemChange;
         student.setRedeemPoints(Math.max(0, nextRedeem));
-        int undoChangeValue = -changeValue;
         int currentExp = student.getExp() == null ? 0 : student.getExp();
-        int nextExp = Math.max(0, currentExp + calcExpDeltaFromChange(undoChangeValue, resolveExpGainRatio(classId)));
+        int nextExp;
+        if (expExact || expChange != 0) {
+            nextExp = Math.max(0, currentExp - expChange);
+        } else if (changeValue != 0) {
+            int undoChangeValue = -changeValue;
+            nextExp = Math.max(0, currentExp + calcExpDeltaFromChange(undoChangeValue, resolveExpGainRatio(classId)));
+        } else {
+            nextExp = currentExp;
+        }
         student.setExp(nextExp);
-        student.setLevel(snapshotLevelByExp(classId, nextExp));
+        int level = snapshotLevelByExp(classId, nextExp);
+        student.setLevel(level);
+        student.setTitle(generateTitle(level, classId));
         student.setUpdateTime(System.currentTimeMillis());
         studentMapper.updateById(student);
 
         event.setRevoked(1);
         studentEventMapper.updateById(event);
-
-        StudentEvent undoEvent = new StudentEvent();
-        undoEvent.setClassId(classId);
-        undoEvent.setStudentId(event.getStudentId());
-        undoEvent.setReason("撤销记录: " + (event.getReason() == null ? "手动调整" : event.getReason()));
-        undoEvent.setChangeValue(-changeValue);
-        undoEvent.setRedeemChange(-redeemChange);
-        undoEvent.setNote("undoFromEventId=" + event.getId());
-        undoEvent.setTimestamp(System.currentTimeMillis());
-        undoEvent.setRevoked(0);
-        studentEventMapper.insert(undoEvent);
 
         syncEventService.publishClassChange(classId, "history_undo", event.getStudentId());
     }
@@ -146,6 +150,29 @@ public class HistoryUndoService {
             }
         }
         return Math.max(1, Math.min(level, levels.size()));
+    }
+
+    private String generateTitle(int level, Long classId) {
+        try {
+            GrowthConfigService.ResolvedGrowthConfig config = growthConfigService.resolveForClass(classId);
+            int stage1Max = config.getStage1MaxLevel();
+            int stage2Max = config.getStage2MaxLevel();
+            if (level <= stage1Max) {
+                return "灵兽";
+            }
+            if (level <= stage2Max) {
+                return "神兽";
+            }
+            return "传说神兽";
+        } catch (Exception ex) {
+            if (level <= 3) {
+                return "灵兽";
+            }
+            if (level <= 6) {
+                return "神兽";
+            }
+            return "传说神兽";
+        }
     }
 
     private Long parseLongFromNote(String note, String key) {

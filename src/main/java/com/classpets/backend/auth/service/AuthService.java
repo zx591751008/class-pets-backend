@@ -2,6 +2,7 @@ package com.classpets.backend.auth.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.classpets.backend.auth.dto.LoginRequestDTO;
+import com.classpets.backend.auth.dto.PasswordResetRequestDTO;
 import com.classpets.backend.auth.dto.RegisterRequestDTO;
 import com.classpets.backend.auth.dto.ScreenLockPasswordRequestDTO;
 import com.classpets.backend.auth.dto.ScreenLockVerifyRequestDTO;
@@ -79,10 +80,10 @@ public class AuthService {
                 .eq(ActivationCode::getCode, activation)
                 .last("limit 1"));
         if (code == null) {
-            throw new BizException(41001, "激活码错误");
+            throw new BizException(41001, "注册码错误");
         }
         if (code.getUsed() != null && code.getUsed() == 1) {
-            throw new BizException(41001, "激活码已被使用");
+            throw new BizException(41001, "注册码已被使用");
         }
 
         Teacher teacher = new Teacher();
@@ -100,12 +101,12 @@ public class AuthService {
                     .eq(ActivationCode::getCode, activation)
                     .last("limit 1"));
             if (latest == null) {
-                throw new BizException(41001, "激活码错误");
+                throw new BizException(41001, "注册码错误");
             }
             if (latest.getUsed() != null && latest.getUsed() == 1) {
-                throw new BizException(41001, "激活码已被使用");
+                throw new BizException(41001, "注册码已被使用");
             }
-            throw new BizException(41001, "激活码验证失败，请稍后重试");
+            throw new BizException(41001, "注册码验证失败，请稍后重试");
         }
 
         return buildLoginVO(teacher, userAgent);
@@ -221,7 +222,7 @@ public class AuthService {
                 // Let's also check if the code simply exists and was used by this teacher.
                 // Using the exact logic: The code MUST exist, be 'used', and 'usedBy' MUST be
                 // this teacherId.
-                throw new BizException(40301, "注册码验证失败，请确认您使用的是注册时填写的激活码");
+                throw new BizException(40301, "注册码验证失败，请确认您使用的是注册时填写的注册码");
             }
 
             teacher.setPasswordHash(passwordEncoder.encode(password));
@@ -230,6 +231,47 @@ public class AuthService {
         teacherMapper.updateById(teacher);
 
         return toTeacherVO(teacher);
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public void resetPasswordByActivationCode(PasswordResetRequestDTO request) {
+        String username = safeTrim(request.getUsername());
+        String activationCode = safeTrim(request.getActivationCode());
+        String newPassword = safeTrim(request.getNewPassword());
+
+        validateUsername(username);
+        if (newPassword.length() < 6) {
+            throw new BizException(40001, "密码至少 6 位");
+        }
+
+        Teacher teacher = teacherMapper.selectOne(new LambdaQueryWrapper<Teacher>()
+                .eq(Teacher::getUsername, username)
+                .last("limit 1"));
+        if (teacher == null) {
+            throw new BizException(40101, "账号或注册码错误");
+        }
+
+        ActivationCode codeRecord = activationCodeMapper.selectOne(new LambdaQueryWrapper<ActivationCode>()
+                .eq(ActivationCode::getCode, activationCode)
+                .eq(ActivationCode::getUsedBy, teacher.getId())
+                .eq(ActivationCode::getUsed, 1)
+                .last("limit 1"));
+        if (codeRecord == null) {
+            throw new BizException(40101, "账号或注册码错误");
+        }
+
+        teacher.setPasswordHash(passwordEncoder.encode(newPassword));
+        teacherMapper.updateById(teacher);
+
+        List<TeacherDeviceToken> tokens = teacherDeviceTokenMapper.selectList(new LambdaQueryWrapper<TeacherDeviceToken>()
+                .eq(TeacherDeviceToken::getTeacherId, teacher.getId()));
+        teacherDeviceTokenMapper.delete(new LambdaQueryWrapper<TeacherDeviceToken>()
+                .eq(TeacherDeviceToken::getTeacherId, teacher.getId()));
+        for (TeacherDeviceToken token : tokens) {
+            if (token != null && token.getToken() != null && !token.getToken().trim().isEmpty()) {
+                deleteRedisSession(token.getToken().trim());
+            }
+        }
     }
 
     public void setScreenLockPassword(ScreenLockPasswordRequestDTO request) {

@@ -19,6 +19,10 @@ import java.util.stream.Collectors;
 @Service
 public class LeaderboardService {
 
+    private static final Set<String> STUDENT_RANK_TYPES = Set.of("TOTAL", "WEEKLY", "MONTHLY");
+    private static final Set<String> GROUP_RANK_TYPES = Set.of(
+            "TOTAL", "WEEKLY", "MONTHLY", "MEMBER_TOTAL", "MEMBER_WEEKLY", "MEMBER_MONTHLY");
+
     private final StudentMapper studentMapper;
     private final StudentEventMapper studentEventMapper;
     private final ClassInfoService classInfoService;
@@ -44,9 +48,10 @@ public class LeaderboardService {
 
         List<RankVO> result = new ArrayList<>();
         boolean hasCategory = category != null && !category.isEmpty();
+        String normalizedType = normalizeStudentRankType(type);
 
         // WEEKLY - students with scores this week (optionally filtered by category)
-        if ("WEEKLY".equalsIgnoreCase(type)) {
+        if ("WEEKLY".equals(normalizedType)) {
             LocalDateTime now = LocalDateTime.now();
             LocalDateTime start = now.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
                     .withHour(0).withMinute(0).withSecond(0).withNano(0);
@@ -56,10 +61,10 @@ public class LeaderboardService {
             List<Map<String, Object>> stats = hasCategory
                     ? studentEventMapper.sumScoreByCategoryAndTimeRange(classId, category, startTime, endTime)
                     : studentEventMapper.sumScoreByTimeRange(classId, startTime, endTime);
-            result = mapStatsToVO(classId, stats);
+            result = buildStudentRankList(classId, toStudentScoreMap(stats));
         }
         // MONTHLY - students with scores this month (optionally filtered by category)
-        else if ("MONTHLY".equalsIgnoreCase(type)) {
+        else if ("MONTHLY".equals(normalizedType)) {
             LocalDateTime now = LocalDateTime.now();
             LocalDateTime start = now.with(TemporalAdjusters.firstDayOfMonth())
                     .withHour(0).withMinute(0).withSecond(0).withNano(0);
@@ -69,12 +74,12 @@ public class LeaderboardService {
             List<Map<String, Object>> stats = hasCategory
                     ? studentEventMapper.sumScoreByCategoryAndTimeRange(classId, category, startTime, endTime)
                     : studentEventMapper.sumScoreByTimeRange(classId, startTime, endTime);
-            result = mapStatsToVO(classId, stats);
+            result = buildStudentRankList(classId, toStudentScoreMap(stats));
         }
         // TOTAL + category
         else if (hasCategory) {
             List<Map<String, Object>> stats = studentEventMapper.sumScoreByCategory(classId, category);
-            result = mapStatsToVO(classId, stats);
+            result = buildStudentRankList(classId, toStudentScoreMap(stats));
         }
         // Default: TOTAL - all students by total points
         else {
@@ -110,45 +115,60 @@ public class LeaderboardService {
         return result;
     }
 
-    private List<RankVO> mapStatsToVO(Long classId, List<Map<String, Object>> stats) {
-        List<RankVO> list = new ArrayList<>();
-        if (stats == null || stats.isEmpty())
-            return list;
+    private Map<Long, Integer> toStudentScoreMap(List<Map<String, Object>> stats) {
+        Map<Long, Integer> scoreMap = new HashMap<>();
+        if (stats == null || stats.isEmpty()) {
+            return scoreMap;
+        }
+        for (Map<String, Object> stat : stats) {
+            Number studentIdNum = (Number) stat.get("studentId");
+            if (studentIdNum == null) {
+                continue;
+            }
+            Long studentId = studentIdNum.longValue();
+            Number totalObj = (Number) stat.get("total");
+            int total = totalObj == null ? 0 : totalObj.intValue();
+            scoreMap.put(studentId, total);
+        }
+        return scoreMap;
+    }
 
-        // Get all students in class for name lookup
+    private List<RankVO> buildStudentRankList(Long classId, Map<Long, Integer> scoreMap) {
+        List<RankVO> list = new ArrayList<>();
+
         List<Student> students = studentMapper.selectList(new LambdaQueryWrapper<Student>()
                 .eq(Student::getClassId, classId));
-        Map<Long, Student> studentMap = students.stream().collect(Collectors.toMap(Student::getId, s -> s));
 
-        // Get all groups for groupName lookup
         List<com.classpets.backend.entity.GroupInfo> groups = groupMapper
                 .selectList(new LambdaQueryWrapper<com.classpets.backend.entity.GroupInfo>()
                         .eq(com.classpets.backend.entity.GroupInfo::getClassId, classId));
         Map<Long, String> groupNameMap = groups.stream().collect(Collectors.toMap(
                 com.classpets.backend.entity.GroupInfo::getId, com.classpets.backend.entity.GroupInfo::getName));
 
-        for (int i = 0; i < stats.size(); i++) {
-            Map<String, Object> stat = stats.get(i);
-            Long studentId = ((Number) stat.get("studentId")).longValue();
-            Number totalObj = (Number) stat.get("total");
-            Integer total = totalObj == null ? 0 : totalObj.intValue();
-
-            Student s = studentMap.get(studentId);
-            if (s != null) {
-                RankVO vo = new RankVO();
-                vo.setStudentId(s.getId());
-                vo.setName(s.getName());
-                vo.setAvatar(s.getPetId());
-                vo.setAvatarImage(s.getAvatarImage());
-                vo.setScore(total);
-                vo.setRank(i + 1);
-                vo.setLevel(s.getLevel());
-                vo.setTitle(s.getTitle());
-                if (s.getGroupId() != null) {
-                    vo.setGroupName(groupNameMap.get(s.getGroupId()));
-                }
-                list.add(vo);
+        students.sort((a, b) -> {
+            int scoreA = scoreMap.getOrDefault(a.getId(), 0);
+            int scoreB = scoreMap.getOrDefault(b.getId(), 0);
+            if (scoreA != scoreB) {
+                return Integer.compare(scoreB, scoreA);
             }
+            return Long.compare(a.getId(), b.getId());
+        });
+
+        for (int i = 0; i < students.size(); i++) {
+            Student s = students.get(i);
+            RankVO vo = new RankVO();
+            vo.setStudentId(s.getId());
+            vo.setName(s.getName());
+            vo.setAvatar(s.getPetId());
+            vo.setAvatarImage(s.getAvatarImage());
+            vo.setScore(scoreMap.getOrDefault(s.getId(), 0));
+            vo.setRank(i + 1);
+            vo.setLevel(s.getLevel());
+            vo.setTitle(s.getTitle());
+            if (s.getGroupId() != null) {
+                vo.setGroupName(groupNameMap.get(s.getGroupId()));
+            }
+            list.add(vo);
         }
         return list;
     }
@@ -159,17 +179,18 @@ public class LeaderboardService {
         }
 
         List<RankVO> result = new ArrayList<>();
+        String normalizedType = normalizeGroupRankType(type);
         List<com.classpets.backend.entity.GroupInfo> groups = groupMapper
                 .selectList(new LambdaQueryWrapper<com.classpets.backend.entity.GroupInfo>()
                         .eq(com.classpets.backend.entity.GroupInfo::getClassId, classId));
         Map<Long, com.classpets.backend.entity.GroupInfo> groupMap = groups.stream()
                 .collect(Collectors.toMap(com.classpets.backend.entity.GroupInfo::getId, g -> g));
 
-        if (type.startsWith("MEMBER_")) {
+        if (normalizedType.startsWith("MEMBER_")) {
             // Aggregate student points by group
             Map<Long, Integer> groupMemberScores = new HashMap<>();
 
-            if ("MEMBER_TOTAL".equalsIgnoreCase(type)) {
+            if ("MEMBER_TOTAL".equals(normalizedType)) {
                 List<Student> students = studentMapper.selectList(new LambdaQueryWrapper<Student>()
                         .eq(Student::getClassId, classId)
                         .isNotNull(Student::getGroupId));
@@ -180,7 +201,7 @@ public class LeaderboardService {
                 // MEMBER_WEEKLY or MEMBER_MONTHLY
                 LocalDateTime now = LocalDateTime.now();
                 LocalDateTime start;
-                if ("MEMBER_WEEKLY".equalsIgnoreCase(type)) {
+                if ("MEMBER_WEEKLY".equals(normalizedType)) {
                     start = now.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
                             .withHour(0).withMinute(0).withSecond(0).withNano(0);
                 } else {
@@ -222,11 +243,11 @@ public class LeaderboardService {
             for (int i = 0; i < result.size(); i++) {
                 result.get(i).setRank(i + 1);
             }
-        } else if ("WEEKLY".equalsIgnoreCase(type) || "MONTHLY".equalsIgnoreCase(type)) {
+        } else if ("WEEKLY".equals(normalizedType) || "MONTHLY".equals(normalizedType)) {
             // Existing independent group points logic...
             LocalDateTime now = LocalDateTime.now();
             LocalDateTime start;
-            if ("WEEKLY".equalsIgnoreCase(type)) {
+            if ("WEEKLY".equals(normalizedType)) {
                 start = now.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
                         .withHour(0).withMinute(0).withSecond(0).withNano(0);
             } else {
@@ -274,5 +295,15 @@ public class LeaderboardService {
             }
         }
         return result;
+    }
+
+    private String normalizeStudentRankType(String type) {
+        String normalized = type == null ? "TOTAL" : type.trim().toUpperCase(Locale.ROOT);
+        return STUDENT_RANK_TYPES.contains(normalized) ? normalized : "TOTAL";
+    }
+
+    private String normalizeGroupRankType(String type) {
+        String normalized = type == null ? "TOTAL" : type.trim().toUpperCase(Locale.ROOT);
+        return GROUP_RANK_TYPES.contains(normalized) ? normalized : "TOTAL";
     }
 }

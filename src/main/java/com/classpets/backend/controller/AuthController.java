@@ -1,6 +1,7 @@
 package com.classpets.backend.controller;
 
 import com.classpets.backend.auth.dto.LoginRequestDTO;
+import com.classpets.backend.auth.dto.PasswordResetRequestDTO;
 import com.classpets.backend.auth.dto.RegisterRequestDTO;
 import com.classpets.backend.auth.dto.ScreenLockPasswordRequestDTO;
 import com.classpets.backend.auth.dto.ScreenLockVerifyRequestDTO;
@@ -39,6 +40,12 @@ public class AuthController {
             @RequestHeader(value = "User-Agent", required = false) String userAgent,
             HttpServletRequest servletRequest) {
         return ApiResponse.ok(authService.login(request, userAgent, resolveClientIp(servletRequest)));
+    }
+
+    @PostMapping("/password/reset")
+    public ApiResponse<Void> resetPassword(@Validated @RequestBody PasswordResetRequestDTO request) {
+        authService.resetPasswordByActivationCode(request);
+        return ApiResponse.ok();
     }
 
     @PostMapping("/logout")

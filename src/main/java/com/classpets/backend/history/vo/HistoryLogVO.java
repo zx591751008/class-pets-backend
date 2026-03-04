@@ -13,5 +13,8 @@ public class HistoryLogVO {
     private String reason;
     private Integer changeValue;
     private Integer redeemChange;
+    private Integer expChange;
     private Long timestamp;
+    private Integer revoked;
+    private Boolean undoable;
 }

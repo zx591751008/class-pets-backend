@@ -10,7 +10,7 @@ import java.util.List;
 public class GrowthProperties {
 
     private List<Integer> levelThresholds = new ArrayList<>(
-            Arrays.asList(0, 100, 250, 450, 700, 1000, 1400, 1900, 2500, 3200, 4000));
+            Arrays.asList(0, 100, 250, 450, 700, 1000, 1400, 1900, 2500, 3200));
 
     private Integer overflowStep = 800;
     private Double expGainRatio = 10.0;

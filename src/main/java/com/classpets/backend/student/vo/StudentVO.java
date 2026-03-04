@@ -17,7 +17,10 @@ public class StudentVO {
     private Long groupId;
     private String avatarImage;
     private String petId;
+    private String title;
     private Long updateTime;
+    private Boolean galleryUnlocked;
+    private String unlockedPetId;
 
     public Long getUpdateTime() {
         return updateTime;
@@ -153,5 +156,29 @@ public class StudentVO {
 
     public void setPetId(String petId) {
         this.petId = petId;
+    }
+
+    public String getTitle() {
+        return title;
+    }
+
+    public void setTitle(String title) {
+        this.title = title;
+    }
+
+    public Boolean getGalleryUnlocked() {
+        return galleryUnlocked;
+    }
+
+    public void setGalleryUnlocked(Boolean galleryUnlocked) {
+        this.galleryUnlocked = galleryUnlocked;
+    }
+
+    public String getUnlockedPetId() {
+        return unlockedPetId;
+    }
+
+    public void setUnlockedPetId(String unlockedPetId) {
+        this.unlockedPetId = unlockedPetId;
     }
 }

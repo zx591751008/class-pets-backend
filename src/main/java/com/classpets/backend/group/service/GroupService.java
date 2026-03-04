@@ -1,6 +1,7 @@
 package com.classpets.backend.group.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.classpets.backend.classinfo.service.ClassInfoService;
 import com.classpets.backend.common.BizException;
 import com.classpets.backend.entity.GroupInfo;
@@ -14,6 +15,7 @@ import com.classpets.backend.mapper.StudentMapper;
 import com.classpets.backend.sync.SyncEventService;
 import com.classpets.backend.entity.GroupEvent;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.stream.Collectors;
@@ -69,16 +71,20 @@ public class GroupService {
         return toVO(group, group.getClassId());
     }
 
+    @Transactional(rollbackFor = Exception.class)
     public void delete(Long groupId) {
         GroupInfo group = mustGet(groupId);
         ensureClassOwnership(group.getClassId());
+
+        // Remove group history first to satisfy FK constraints
+        groupEventMapper.delete(new LambdaQueryWrapper<GroupEvent>()
+                .eq(GroupEvent::getGroupId, groupId));
+
         // Remove group_id from students in this group
-        List<Student> students = studentMapper.selectList(
-                new LambdaQueryWrapper<Student>().eq(Student::getGroupId, groupId));
-        for (Student s : students) {
-            s.setGroupId(null);
-            studentMapper.updateById(s);
-        }
+        studentMapper.update(null, new LambdaUpdateWrapper<Student>()
+                .eq(Student::getGroupId, groupId)
+                .set(Student::getGroupId, null));
+
         groupInfoMapper.deleteById(groupId);
         syncEventService.publishClassChange(group.getClassId(), "group_deleted", groupId);
     }

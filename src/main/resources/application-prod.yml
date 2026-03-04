@@ -11,7 +11,9 @@ spring:
     driver-class-name: com.mysql.cj.jdbc.Driver
   # Flyway Migration Configuration
   flyway:
-    enabled: true
+    # 线上容灾：默认关闭 Flyway，避免历史库存在失败迁移记录时导致服务无法启动。
+    # 如需在新环境自动迁移，请显式设置环境变量 FLYWAY_ENABLED=true。
+    enabled: ${FLYWAY_ENABLED:false}
     baseline-on-migrate: true
     baseline-version: 0.0.1
     # Ensure it uses the correct locations

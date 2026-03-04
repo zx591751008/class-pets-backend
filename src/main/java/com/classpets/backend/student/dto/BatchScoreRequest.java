@@ -17,6 +17,8 @@ public class BatchScoreRequest {
 
     private String reason;
 
+    private Long ruleId;
+
     public List<Long> getStudentIds() {
         return studentIds;
     }
@@ -47,5 +49,13 @@ public class BatchScoreRequest {
 
     public void setReason(String reason) {
         this.reason = reason;
+    }
+
+    public Long getRuleId() {
+        return ruleId;
+    }
+
+    public void setRuleId(Long ruleId) {
+        this.ruleId = ruleId;
     }
 }

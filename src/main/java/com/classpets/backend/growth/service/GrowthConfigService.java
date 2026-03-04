@@ -355,14 +355,14 @@ public class GrowthConfigService {
         wolfStages.add(new PetStage(1, "/uploads/system/thunder_wolf/1.png"));
         wolfStages.add(new PetStage(2, "/uploads/system/thunder_wolf/2.png"));
         wolfStages.add(new PetStage(3, "/uploads/system/thunder_wolf/3.png"));
-        routes.add(new PetRoute("sys_thunder_wolf", "雷霆狼 (系统限定)", true, wolfStages));
+        routes.add(new PetRoute("sys_thunder_wolf", "雷霆狼", true, wolfStages));
 
         // 4. Golden Light Dragon (System Locked)
         List<PetStage> dragonStages = new ArrayList<>();
         dragonStages.add(new PetStage(1, "/uploads/system/golden_dragon/1.png"));
         dragonStages.add(new PetStage(2, "/uploads/system/golden_dragon/2.png"));
         dragonStages.add(new PetStage(3, "/uploads/system/golden_dragon/3.png"));
-        routes.add(new PetRoute("sys_golden_dragon", "金光龙 (系统限定)", true, dragonStages));
+        routes.add(new PetRoute("sys_golden_dragon", "金光龙", true, dragonStages));
 
         // --- Batch Added System Pets (10 Types) ---
         addSystemPet(routes, "sys_flame_lion", "烈焰狮王", "flame_lion");
@@ -395,7 +395,7 @@ public class GrowthConfigService {
         stages.add(new PetStage(1, "/uploads/system/" + folder + "/1.png"));
         stages.add(new PetStage(2, "/uploads/system/" + folder + "/2.png"));
         stages.add(new PetStage(3, "/uploads/system/" + folder + "/3.png"));
-        routes.add(new PetRoute(id, name + " (系统限定)", true, stages));
+        routes.add(new PetRoute(id, sanitizePetRouteName(name), true, stages));
     }
 
     private List<LevelItem> sanitizeLevelItems(List<LevelItem> input) {
@@ -450,8 +450,13 @@ public class GrowthConfigService {
         int stage1 = safePositive(input.stage1MaxLevel, 3);
         int stage2 = safePositive(input.stage2MaxLevel, 6);
         int stage3 = safePositive(input.stage3StartLevel, 7);
+        int maxLevel = 10;
+        if (stage1 < 1) stage1 = 1;
+        if (stage2 <= stage1) stage2 = stage1 + 1;
+        if (stage2 >= maxLevel) stage2 = maxLevel - 1;
+        if (stage3 <= stage2) stage3 = stage2 + 1;
         if (!(stage1 < stage2 && stage2 < stage3)) {
-            throw new BizException(40001, "进化阶段等级必须满足 阶段1 < 阶段2 < 阶段3");
+            throw new BizException(40001, "进化阶段等级必须满足 阶段1 < 阶段2 < 阶段3，且阶段2必须小于10");
         }
         return new EvolutionConfig(stage1, stage2, stage3);
     }
@@ -470,7 +475,7 @@ public class GrowthConfigService {
             if (id.isEmpty()) {
                 id = "route_" + UUID.randomUUID().toString().replace("-", "").substring(0, 8);
             }
-            String name = trim(route.name);
+            String name = sanitizePetRouteName(route.name);
             if (name.isEmpty()) {
                 name = "路线" + (i + 1);
             }
@@ -493,6 +498,18 @@ public class GrowthConfigService {
 
     private String trim(String text) {
         return text == null ? "" : text.trim();
+    }
+
+    private String sanitizePetRouteName(String text) {
+        String name = trim(text);
+        if (name.isEmpty()) {
+            return "";
+        }
+        name = name.replace("(系统限定)", "")
+                .replace("（系统限定）", "")
+                .replace("系统限定", "")
+                .replace("宠物限定", "");
+        return trim(name);
     }
 
     private int safePositive(Integer value, int fallback) {
@@ -576,7 +593,7 @@ public class GrowthConfigService {
         for (int i = 0; i < routesNode.size(); i++) {
             JsonNode routeNode = routesNode.get(i);
             String id = routeNode.path("id").asText("");
-            String name = routeNode.path("name").asText("");
+            String name = sanitizePetRouteName(routeNode.path("name").asText(""));
             Boolean enabled = routeNode.path("enabled").isMissingNode() ? true
                     : routeNode.path("enabled").asBoolean(true);
             List<PetStage> stages = new ArrayList<>();
@@ -730,6 +747,14 @@ public class GrowthConfigService {
 
         public EvolutionConfig getEvolution() {
             return evolution;
+        }
+
+        public int getStage1MaxLevel() {
+            return evolution != null && evolution.stage1MaxLevel != null ? evolution.stage1MaxLevel : 3;
+        }
+
+        public int getStage2MaxLevel() {
+            return evolution != null && evolution.stage2MaxLevel != null ? evolution.stage2MaxLevel : 6;
         }
 
         public List<PetRoute> getPetRoutes() {

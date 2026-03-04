@@ -51,7 +51,6 @@ public class HistoryController {
 
         LambdaQueryWrapper<StudentEvent> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(StudentEvent::getClassId, classId);
-        wrapper.eq(StudentEvent::getRevoked, 0);
 
         if (studentId != null) {
             wrapper.eq(StudentEvent::getStudentId, studentId);
@@ -63,7 +62,15 @@ public class HistoryController {
         wrapper.orderByDesc(StudentEvent::getTimestamp);
         wrapper.last("LIMIT 100");
 
-        List<StudentEvent> events = studentEventMapper.selectList(wrapper);
+        List<StudentEvent> events = studentEventMapper.selectList(wrapper).stream()
+                .filter(event -> {
+                    String note = event.getNote();
+                    if (note == null || note.isEmpty()) {
+                        return true;
+                    }
+                    return !note.contains("undoFromEventId=") && !note.contains("undoRedemptionRecordId=");
+                })
+                .collect(Collectors.toList());
 
         // Fetch related data
         List<Long> studentIds = events.stream().map(StudentEvent::getStudentId).distinct().collect(Collectors.toList());
@@ -83,7 +90,12 @@ public class HistoryController {
             vo.setReason(event.getReason());
             vo.setChangeValue(event.getChangeValue());
             vo.setRedeemChange(event.getRedeemChange());
+            vo.setExpChange(event.getExpChange());
             vo.setTimestamp(event.getTimestamp());
+            vo.setRevoked(event.getRevoked());
+            boolean revoked = event.getRevoked() != null && event.getRevoked() == 1;
+            boolean undoable = !revoked && !isNonUndoableEvent(event);
+            vo.setUndoable(undoable);
 
             Student s = studentMap.get(event.getStudentId());
             if (s != null) {
@@ -103,6 +115,12 @@ public class HistoryController {
         }).collect(Collectors.toList());
 
         return ApiResponse.ok(logs);
+    }
+
+    private boolean isNonUndoableEvent(StudentEvent event) {
+        String reason = event.getReason() == null ? "" : event.getReason();
+        String note = event.getNote() == null ? "" : event.getNote();
+        return reason.contains("遗忘果实") || note.contains("noUndo=1");
     }
 
     @PostMapping("/{eventId}/undo")

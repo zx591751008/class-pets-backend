@@ -2,11 +2,13 @@ package com.classpets.backend.controller;
 
 import com.classpets.backend.common.ApiResponse;
 import com.classpets.backend.student.dto.StudentScoreRequest;
+import com.classpets.backend.student.dto.StudentSpendRedeemRequest;
 import com.classpets.backend.student.dto.StudentUpsertRequest;
 import com.classpets.backend.student.dto.BatchScoreRequest;
 import com.classpets.backend.student.vo.BatchScoreResultVO;
 import com.classpets.backend.student.service.StudentService;
 import com.classpets.backend.student.vo.StudentVO;
+import com.classpets.backend.student.vo.StudentPetGalleryVO;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -20,6 +22,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import com.classpets.backend.student.dto.FeedPetRequest;
 
 @RestController
 @RequestMapping("/api/v1")
@@ -60,6 +63,12 @@ public class StudentController {
         return ApiResponse.ok(studentService.score(studentId, request));
     }
 
+    @PostMapping("/students/{studentId}/redeem/spend")
+    public ApiResponse<StudentVO> spendRedeem(@PathVariable Long studentId,
+            @Validated @RequestBody StudentSpendRedeemRequest request) {
+        return ApiResponse.ok(studentService.spendRedeem(studentId, request));
+    }
+
     @PostMapping("/classes/{classId}/students/batch-score")
     public ApiResponse<BatchScoreResultVO> batchScore(@PathVariable Long classId,
             @Validated @RequestBody BatchScoreRequest request) {
@@ -79,5 +88,34 @@ public class StudentController {
         Map<String, Object> data = new HashMap<>();
         data.put("deletedCount", deletedCount);
         return ApiResponse.ok(data);
+    }
+
+    @GetMapping("/students/{studentId}/abandoned-pets")
+    public ApiResponse<List<String>> getAbandonedPets(@PathVariable Long studentId) {
+        return ApiResponse.ok(studentService.getAbandonedPetIds(studentId));
+    }
+
+    @PostMapping("/students/{studentId}/abandon-pet")
+    public ApiResponse<Void> abandonPet(@PathVariable Long studentId, @RequestBody Map<String, String> request) {
+        Long classId = Long.parseLong(request.get("classId"));
+        String petId = request.get("petId");
+        studentService.abandonPet(studentId, classId, petId);
+        return ApiResponse.ok();
+    }
+
+    @PostMapping("/students/{studentId}/adopt")
+    public ApiResponse<StudentVO> adoptPet(@PathVariable Long studentId, @RequestBody Map<String, String> request) {
+        return ApiResponse.ok(studentService.adoptPet(studentId, request.get("petId")));
+    }
+
+    @PostMapping("/students/{studentId}/feed")
+    public ApiResponse<Map<String, Object>> feedPet(@PathVariable Long studentId,
+            @Validated @RequestBody FeedPetRequest request) {
+        return ApiResponse.ok(studentService.feedPet(studentId, request));
+    }
+
+    @GetMapping("/classes/{classId}/students/{studentId}/gallery")
+    public ApiResponse<List<StudentPetGalleryVO>> getGallery(@PathVariable Long classId, @PathVariable Long studentId) {
+        return ApiResponse.ok(studentService.getStudentGallery(classId, studentId));
     }
 }

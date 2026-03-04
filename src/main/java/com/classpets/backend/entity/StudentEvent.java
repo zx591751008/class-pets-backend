@@ -24,6 +24,10 @@ public class StudentEvent {
 
     private Integer redeemChange;
 
+    private Integer expChange;
+
+    private Long ruleId;
+
     private String note;
 
     private Long timestamp;

@@ -35,6 +35,8 @@ import java.util.Map;
 @Service
 public class StudentImportService {
 
+    private static final int MAX_STUDENTS_PER_CLASS = 80;
+
     private final ClassInfoService classInfoService;
     private final StudentMapper studentMapper;
     private final GroupInfoMapper groupInfoMapper;
@@ -88,6 +90,9 @@ public class StudentImportService {
             }
         }
 
+        int existingCount = existing.size();
+        int createdInRequest = 0;
+
         List<GroupInfo> groups = groupInfoMapper.selectList(new LambdaQueryWrapper<GroupInfo>()
                 .eq(GroupInfo::getClassId, classId));
         Map<String, GroupInfo> groupByName = new LinkedHashMap<>();
@@ -110,6 +115,9 @@ public class StudentImportService {
                 String studentNo = trim(row.getStudentNo());
                 Student student = studentNo.isEmpty() ? null : byNo.get(studentNo);
                 if (student == null) {
+                    if (existingCount + createdInRequest >= MAX_STUDENTS_PER_CLASS) {
+                        throw new BizException(40001, "班级人数已达上限（最多80人）");
+                    }
                     student = new Student();
                     student.setClassId(classId);
                     student.setStudentNo(studentNo.isEmpty() ? null : studentNo);
@@ -123,6 +131,7 @@ public class StudentImportService {
                         byNo.put(studentNo, student);
                     }
                     created++;
+                    createdInRequest++;
                 } else {
                     fillStudentFields(student, row, classId, groupByName);
                     studentMapper.updateById(student);

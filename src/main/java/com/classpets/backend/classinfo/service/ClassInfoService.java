@@ -39,6 +39,8 @@ import java.util.stream.Collectors;
 @Service
 public class ClassInfoService {
 
+    private static final int MAX_CLASSES_PER_TEACHER = 20;
+
     private final ClassInfoMapper classInfoMapper;
     private final StudentMapper studentMapper;
     private final GroupInfoMapper groupInfoMapper;
@@ -89,6 +91,13 @@ public class ClassInfoService {
     @Transactional(rollbackFor = Exception.class)
     public ClassVO create(ClassCreateRequest request) {
         Long teacherId = requireTeacherId();
+
+        Long classCount = classInfoMapper.selectCount(new LambdaQueryWrapper<ClassInfo>()
+                .eq(ClassInfo::getTeacherId, teacherId));
+        if (classCount != null && classCount >= MAX_CLASSES_PER_TEACHER) {
+            throw new BizException(40001, "班级数量已达上限（最多20个）");
+        }
+
         ClassInfo classInfo = new ClassInfo();
         classInfo.setTeacherId(teacherId);
         classInfo.setName(trim(request.getName()));
