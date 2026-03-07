@@ -4,7 +4,9 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.classpets.backend.classinfo.service.ClassInfoService;
 import com.classpets.backend.common.BizException;
 import com.classpets.backend.entity.RuleCategory;
+import com.classpets.backend.entity.RuleInfo;
 import com.classpets.backend.mapper.RuleCategoryMapper;
+import com.classpets.backend.mapper.RuleInfoMapper;
 import com.classpets.backend.rule.dto.RuleCategoryCreateRequest;
 import com.classpets.backend.rule.vo.RuleCategoryVO;
 import org.springframework.stereotype.Service;
@@ -16,10 +18,12 @@ import java.util.stream.Collectors;
 public class RuleCategoryService {
 
     private final RuleCategoryMapper ruleCategoryMapper;
+    private final RuleInfoMapper ruleInfoMapper;
     private final ClassInfoService classInfoService;
 
-    public RuleCategoryService(RuleCategoryMapper ruleCategoryMapper, ClassInfoService classInfoService) {
+    public RuleCategoryService(RuleCategoryMapper ruleCategoryMapper, RuleInfoMapper ruleInfoMapper, ClassInfoService classInfoService) {
         this.ruleCategoryMapper = ruleCategoryMapper;
+        this.ruleInfoMapper = ruleInfoMapper;
         this.classInfoService = classInfoService;
     }
 
@@ -68,6 +72,31 @@ public class RuleCategoryService {
         category.setEnabled(1);
         ruleCategoryMapper.insert(category);
         return toVO(category);
+    }
+
+    public void delete(Long classId, Long categoryId) {
+        ensureClassOwnership(classId);
+        RuleCategory category = ruleCategoryMapper.selectById(categoryId);
+        if (category == null || !classId.equals(category.getClassId())) {
+            throw new BizException(40401, "分类不存在");
+        }
+
+        long relatedRuleCount = countRelatedRules(classId, category);
+        if (relatedRuleCount > 0) {
+            throw new BizException(40001, "该分类下还有 " + relatedRuleCount + " 条规则，请先删除规则后再删除分类");
+        }
+
+        category.setEnabled(0);
+        ruleCategoryMapper.updateById(category);
+    }
+
+    private long countRelatedRules(Long classId, RuleCategory category) {
+        Long count = ruleInfoMapper.selectCount(new LambdaQueryWrapper<RuleInfo>()
+                .eq(RuleInfo::getClassId, classId)
+                .and(w -> w.eq(RuleInfo::getCategoryId, category.getId())
+                        .or(v -> v.eq(RuleInfo::getTargetType, category.getTargetType())
+                                .eq(RuleInfo::getCategory, category.getName()))));
+        return count == null ? 0 : count;
     }
 
     private void ensureClassOwnership(Long classId) {

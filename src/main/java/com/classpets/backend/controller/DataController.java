@@ -1,6 +1,7 @@
 package com.classpets.backend.controller;
 
 import com.classpets.backend.common.ApiResponse;
+import com.classpets.backend.data.dto.ExportBundleRequest;
 import com.classpets.backend.data.dto.RuleImportCommitRequest;
 import com.classpets.backend.data.dto.StudentImportCommitRequest;
 import com.classpets.backend.data.service.DataExportService;
@@ -24,6 +25,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.multipart.MultipartFile;
 
 import javax.validation.Valid;
+import java.nio.charset.StandardCharsets;
 
 @RestController
 @RequestMapping("/api/v1/classes/{classId}/data")
@@ -68,9 +70,25 @@ public class DataController {
     }
 
     @GetMapping("/export/leaderboard")
-    public ResponseEntity<byte[]> exportLeaderboard(@PathVariable Long classId) {
-        byte[] body = dataExportService.exportLeaderboardCsv(classId);
-        return csvResponse("leaderboard.csv", body);
+    public ResponseEntity<byte[]> exportLeaderboard(@PathVariable Long classId,
+            @RequestParam(defaultValue = "TOTAL") String type,
+            @RequestParam(required = false) String category) {
+        byte[] body = dataExportService.exportLeaderboardXlsx(classId, type, category);
+        String safeType = (type == null ? "TOTAL" : type.toUpperCase()).replaceAll("[^A-Z_0-9-]", "_");
+        StringBuilder filename = new StringBuilder("排行榜_").append(safeType);
+        if (category != null && !category.trim().isEmpty()) {
+            String safeCategory = category.trim().replaceAll("[\\\\/:*?\"<>|]", "_");
+            filename.append('_').append(safeCategory);
+        }
+        filename.append(".xlsx");
+        return xlsxResponse(filename.toString(), body);
+    }
+
+    @PostMapping("/export/bundle")
+    public ResponseEntity<byte[]> exportBundle(@PathVariable Long classId,
+            @RequestBody ExportBundleRequest request) {
+        byte[] body = dataExportService.exportBundleXlsx(classId, request.getTypes(), request.getFrom(), request.getTo());
+        return xlsxResponse("数据导出.xlsx", body);
     }
 
     @GetMapping("/export/redemptions")
@@ -151,7 +169,15 @@ public class DataController {
     private ResponseEntity<byte[]> csvResponse(String filename, byte[] body) {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(new MediaType("text", "csv"));
-        headers.setContentDisposition(ContentDisposition.attachment().filename(filename).build());
+        headers.setContentDisposition(ContentDisposition.attachment().filename(filename, StandardCharsets.UTF_8).build());
+        return ResponseEntity.ok().headers(headers).body(body);
+    }
+
+    private ResponseEntity<byte[]> xlsxResponse(String filename, byte[] body) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(
+                MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"));
+        headers.setContentDisposition(ContentDisposition.attachment().filename(filename, StandardCharsets.UTF_8).build());
         return ResponseEntity.ok().headers(headers).body(body);
     }
 }

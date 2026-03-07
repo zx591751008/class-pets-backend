@@ -29,4 +29,10 @@ public class RuleCategoryController {
             @RequestBody RuleCategoryCreateRequest request) {
         return ApiResponse.ok(ruleCategoryService.create(classId, request));
     }
+
+    @DeleteMapping("/{categoryId}")
+    public ApiResponse<Void> delete(@PathVariable Long classId, @PathVariable Long categoryId) {
+        ruleCategoryService.delete(classId, categoryId);
+        return ApiResponse.ok(null);
+    }
 }
