@@ -19,7 +19,9 @@ import com.classpets.backend.student.dto.StudentScoreRequest;
 import com.classpets.backend.student.dto.StudentSpendRedeemRequest;
 import com.classpets.backend.student.dto.StudentUpsertRequest;
 import com.classpets.backend.student.dto.BatchScoreRequest;
+import com.classpets.backend.student.dto.BatchAdoptRequest;
 import com.classpets.backend.student.vo.BatchScoreResultVO;
+import com.classpets.backend.student.vo.BatchAdoptResultVO;
 import com.classpets.backend.student.vo.StudentVO;
 import com.classpets.backend.student.vo.StudentPetGalleryVO;
 import com.classpets.backend.student.dto.FeedPetRequest;
@@ -29,6 +31,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.List;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.HashSet;
 import java.util.Set;
@@ -192,7 +195,8 @@ public class StudentService {
         int beforeExp = Math.max(0, safe(student.getExp()));
         int exp = beforeExp;
         double expGainRatio = resolveExpGainRatio(student.getClassId());
-        int expectedExpDelta = calcExpDeltaFromChange(delta, expGainRatio);
+        int expChangeValueForGrowth = resolveExpChangeValueForGrowth(beforeTotal, delta);
+        int expectedExpDelta = calcExpDeltaFromChange(expChangeValueForGrowth, expGainRatio);
         exp = Math.max(0, exp + expectedExpDelta);
         int actualExpDelta = exp - beforeExp;
         LevelSnapshot snapshot = snapshotByExp(student.getClassId(), exp);
@@ -429,6 +433,105 @@ public class StudentService {
         return result;
     }
 
+    @Transactional
+    public BatchAdoptResultVO batchAdopt(Long classId, BatchAdoptRequest request) {
+        ensureClassOwnership(classId);
+
+        boolean dryRun = request == null || request.getDryRun() == null || request.getDryRun();
+        List<Student> students = studentMapper.selectList(new LambdaQueryWrapper<Student>()
+                .eq(Student::getClassId, classId)
+                .orderByAsc(Student::getId));
+        students.sort(this::compareStudentByNoThenId);
+
+        BatchAdoptResultVO result = new BatchAdoptResultVO();
+        result.setDryRun(dryRun);
+        result.setTotalStudents(students.size());
+
+        com.classpets.backend.growth.vo.GrowthConfigVO config = growthConfigService.getForClass(classId);
+        Map<String, String> petNameMap = new LinkedHashMap<>();
+        List<String> routeIds = new ArrayList<>();
+        if (config != null && config.getPetRoutes() != null) {
+            for (com.classpets.backend.growth.vo.GrowthConfigVO.PetRouteVO route : config.getPetRoutes()) {
+                if (route == null) {
+                    continue;
+                }
+                String routeId = trim(route.getId());
+                if (routeId.isEmpty()) {
+                    continue;
+                }
+                if (Boolean.FALSE.equals(route.getEnabled())) {
+                    continue;
+                }
+                if (!petNameMap.containsKey(routeId)) {
+                    routeIds.add(routeId);
+                }
+                petNameMap.put(routeId, empty(route.getName(), routeId));
+            }
+        }
+
+        int cursor = 0;
+        int assignedCount = 0;
+        int assignableCount = 0;
+        List<BatchAdoptResultVO.ItemVO> items = new ArrayList<>();
+
+        for (Student student : students) {
+            BatchAdoptResultVO.ItemVO item = new BatchAdoptResultVO.ItemVO();
+            item.setStudentId(student.getId());
+            item.setStudentName(empty(student.getName(), "学生"));
+            item.setStudentNo(empty(student.getStudentNo()));
+
+            String currentPetId = trim(student.getPetId());
+            if (!currentPetId.isEmpty()) {
+                item.setStatus("skip");
+                item.setReason("已有宠物");
+                item.setPetId(currentPetId);
+                item.setPetName(empty(petNameMap.get(currentPetId), currentPetId));
+                items.add(item);
+                continue;
+            }
+
+            if (routeIds.isEmpty()) {
+                item.setStatus("skip");
+                item.setReason("未配置可用宠物路线");
+                items.add(item);
+                continue;
+            }
+
+            Set<String> abandonedSet = new HashSet<>(abandonPetService.getAbandonedPetIds(student.getId()));
+            int selectedIndex = findAssignableRouteIndex(routeIds, abandonedSet, cursor);
+            if (selectedIndex < 0) {
+                item.setStatus("skip");
+                item.setReason("该生可选路线已全部被抛弃");
+                items.add(item);
+                continue;
+            }
+
+            String selectedRouteId = routeIds.get(selectedIndex);
+            item.setStatus("assign");
+            item.setReason(dryRun ? "预览：可分配" : "分配成功");
+            item.setPetId(selectedRouteId);
+            item.setPetName(empty(petNameMap.get(selectedRouteId), selectedRouteId));
+            assignableCount += 1;
+
+            if (!dryRun) {
+                assignPetToStudent(student, selectedRouteId);
+                assignedCount += 1;
+            }
+            cursor = (selectedIndex + 1) % routeIds.size();
+            items.add(item);
+        }
+
+        if (!dryRun && assignedCount > 0) {
+            syncEventService.publishClassChange(classId, "student_batch_adopted", null);
+        }
+
+        result.setAssignableCount(assignableCount);
+        result.setAssignedCount(dryRun ? 0 : assignedCount);
+        result.setSkippedCount(Math.max(0, students.size() - (dryRun ? assignableCount : assignedCount)));
+        result.setItems(items);
+        return result;
+    }
+
     public void batchUpdateGroup(Long classId, com.classpets.backend.student.dto.BatchGroupRequest request) {
         ensureClassOwnership(classId);
         if (request.getStudentIds() == null || request.getStudentIds().isEmpty()) {
@@ -658,14 +761,62 @@ public class StudentService {
             throw new BizException(40001, "该宠物已被抛弃，无法再次领养");
         }
 
+        assignPetToStudent(student, normalizedPetId);
+        return toVO(student);
+    }
+
+    private void assignPetToStudent(Student student, String petId) {
         int exp = Math.max(0, safe(student.getExp()));
         LevelSnapshot snapshot = snapshotByExp(student.getClassId(), exp);
         student.setLevel(snapshot.level);
         student.setTitle(generateTitle(snapshot.level, student.getClassId()));
-        student.setPetId(normalizedPetId);
+        student.setPetId(trim(petId));
         student.setUpdateTime(System.currentTimeMillis());
         studentMapper.updateById(student);
-        return toVO(student);
+    }
+
+    private int findAssignableRouteIndex(List<String> routeIds, Set<String> abandonedSet, int startIndex) {
+        if (routeIds == null || routeIds.isEmpty()) {
+            return -1;
+        }
+        int size = routeIds.size();
+        int safeStart = Math.max(0, startIndex) % size;
+        for (int offset = 0; offset < size; offset++) {
+            int idx = (safeStart + offset) % size;
+            String routeId = routeIds.get(idx);
+            if (routeId == null || routeId.trim().isEmpty()) {
+                continue;
+            }
+            if (!abandonedSet.contains(routeId)) {
+                return idx;
+            }
+        }
+        return -1;
+    }
+
+    private int compareStudentByNoThenId(Student a, Student b) {
+        String noA = trim(a == null ? null : a.getStudentNo());
+        String noB = trim(b == null ? null : b.getStudentNo());
+        boolean numA = noA.matches("^\\d+$");
+        boolean numB = noB.matches("^\\d+$");
+
+        if (numA && numB) {
+            int cmpNum = Long.compare(Long.parseLong(noA), Long.parseLong(noB));
+            if (cmpNum != 0) {
+                return cmpNum;
+            }
+        } else if (numA != numB) {
+            return numA ? -1 : 1;
+        } else if (!noA.equals(noB)) {
+            int cmpNo = noA.compareTo(noB);
+            if (cmpNo != 0) {
+                return cmpNo;
+            }
+        }
+
+        long idA = a == null || a.getId() == null ? Long.MAX_VALUE : a.getId();
+        long idB = b == null || b.getId() == null ? Long.MAX_VALUE : b.getId();
+        return Long.compare(idA, idB);
     }
 
     private int getMaxLevel(Long classId) {
@@ -696,6 +847,15 @@ public class StudentService {
         int gain = (int) Math.round(abs * ratio);
         gain = Math.max(1, gain);
         return changeValue > 0 ? gain : -gain;
+    }
+
+    private int resolveExpChangeValueForGrowth(int beforeTotalPoints, int changeValue) {
+        if (changeValue <= 0) {
+            return changeValue;
+        }
+        int beforePositive = Math.max(0, beforeTotalPoints);
+        int afterPositive = Math.max(0, beforeTotalPoints + changeValue);
+        return Math.max(0, afterPositive - beforePositive);
     }
 
     private StudentVO toVO(Student student) {
@@ -853,12 +1013,15 @@ public class StudentService {
                 .collect(Collectors.toList());
 
         int exp = 0;
+        int totalPoints = 0;
         for (StudentEvent event : sorted) {
             int delta = event.getChangeValue() == null ? 0 : event.getChangeValue();
             if (delta == 0) {
                 continue;
             }
-            exp = Math.max(0, exp + calcExpDeltaFromChange(delta, ratio));
+            int expChangeValue = resolveExpChangeValueForGrowth(totalPoints, delta);
+            exp = Math.max(0, exp + calcExpDeltaFromChange(expChangeValue, ratio));
+            totalPoints += delta;
         }
         return exp;
     }

@@ -5,7 +5,9 @@ import com.classpets.backend.student.dto.StudentScoreRequest;
 import com.classpets.backend.student.dto.StudentSpendRedeemRequest;
 import com.classpets.backend.student.dto.StudentUpsertRequest;
 import com.classpets.backend.student.dto.BatchScoreRequest;
+import com.classpets.backend.student.dto.BatchAdoptRequest;
 import com.classpets.backend.student.vo.BatchScoreResultVO;
+import com.classpets.backend.student.vo.BatchAdoptResultVO;
 import com.classpets.backend.student.service.StudentService;
 import com.classpets.backend.student.vo.StudentVO;
 import com.classpets.backend.student.vo.StudentPetGalleryVO;
@@ -73,6 +75,12 @@ public class StudentController {
     public ApiResponse<BatchScoreResultVO> batchScore(@PathVariable Long classId,
             @Validated @RequestBody BatchScoreRequest request) {
         return ApiResponse.ok(studentService.batchScore(classId, request));
+    }
+
+    @PostMapping("/classes/{classId}/students/batch-adopt")
+    public ApiResponse<BatchAdoptResultVO> batchAdopt(@PathVariable Long classId,
+            @RequestBody(required = false) BatchAdoptRequest request) {
+        return ApiResponse.ok(studentService.batchAdopt(classId, request));
     }
 
     @PutMapping("/classes/{classId}/students/batch-group")

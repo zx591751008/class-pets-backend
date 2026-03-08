@@ -38,7 +38,7 @@ public class RuleService {
 
     public RuleVO create(Long classId, RuleUpsertRequest req) {
         ensureClassOwnership(classId);
-        validate(req);
+        validateForCreate(req);
 
         RuleInfo rule = new RuleInfo();
         rule.setClassId(classId);
@@ -51,9 +51,10 @@ public class RuleService {
     public RuleVO update(Long ruleId, RuleUpsertRequest req) {
         RuleInfo rule = mustGet(ruleId);
         ensureClassOwnership(rule.getClassId());
-        validate(req);
 
-        apply(req, rule);
+        validateEditableFields(req);
+        rule.setContent(req.getContent().trim());
+        rule.setPoints(req.getPoints());
         ruleInfoMapper.updateById(rule);
         return toVO(rule);
     }
@@ -86,16 +87,20 @@ public class RuleService {
         return rule;
     }
 
-    private void validate(RuleUpsertRequest req) {
+    private void validateForCreate(RuleUpsertRequest req) {
+        validateEditableFields(req);
+        String type = req.getType();
+        if (type == null || (!type.equals("add") && !type.equals("deduct"))) {
+            throw new BizException(40001, "类型必须为 add 或 deduct");
+        }
+    }
+
+    private void validateEditableFields(RuleUpsertRequest req) {
         if (req.getContent() == null || req.getContent().trim().isEmpty()) {
             throw new BizException(40001, "规则内容不能为空");
         }
         if (req.getPoints() == null || req.getPoints() <= 0) {
             throw new BizException(40001, "分值必须大于 0");
-        }
-        String type = req.getType();
-        if (type == null || (!type.equals("add") && !type.equals("deduct"))) {
-            throw new BizException(40001, "类型必须为 add 或 deduct");
         }
     }
 

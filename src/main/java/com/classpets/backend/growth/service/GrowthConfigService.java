@@ -11,8 +11,10 @@ import com.classpets.backend.mapper.ClassConfigMapper;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
+import java.io.File;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -24,11 +26,15 @@ import java.util.UUID;
 public class GrowthConfigService {
     private static final TypeReference<List<Integer>> INTEGER_LIST_TYPE = new TypeReference<List<Integer>>() {
     };
+    private static final String[] SYSTEM_IMAGE_EXTENSIONS = new String[] { "png", "webp", "jpg", "jpeg" };
 
     private final ClassConfigMapper classConfigMapper;
     private final ClassInfoService classInfoService;
     private final GrowthProperties growthProperties;
     private final ObjectMapper objectMapper;
+
+    @Value("${file.upload-dir:uploads}")
+    private String uploadDir;
 
     public GrowthConfigService(ClassConfigMapper classConfigMapper,
             ClassInfoService classInfoService,
@@ -350,19 +356,8 @@ public class GrowthConfigService {
         // --- System Pets (Hardcoded) ---
         // Legacy "dragon" and "phoenix" removed per user request
 
-        // 3. Thunder Wolf (System Locked)
-        List<PetStage> wolfStages = new ArrayList<>();
-        wolfStages.add(new PetStage(1, "/uploads/system/thunder_wolf/1.png"));
-        wolfStages.add(new PetStage(2, "/uploads/system/thunder_wolf/2.png"));
-        wolfStages.add(new PetStage(3, "/uploads/system/thunder_wolf/3.png"));
-        routes.add(new PetRoute("sys_thunder_wolf", "雷霆狼", true, wolfStages));
-
-        // 4. Golden Light Dragon (System Locked)
-        List<PetStage> dragonStages = new ArrayList<>();
-        dragonStages.add(new PetStage(1, "/uploads/system/golden_dragon/1.png"));
-        dragonStages.add(new PetStage(2, "/uploads/system/golden_dragon/2.png"));
-        dragonStages.add(new PetStage(3, "/uploads/system/golden_dragon/3.png"));
-        routes.add(new PetRoute("sys_golden_dragon", "金光龙", true, dragonStages));
+        addSystemPet(routes, "sys_thunder_wolf", "雷霆狼", "thunder_wolf");
+        addSystemPet(routes, "sys_golden_dragon", "金光龙", "golden_dragon");
 
         // --- Batch Added System Pets (10 Types) ---
         addSystemPet(routes, "sys_flame_lion", "烈焰狮王", "flame_lion");
@@ -387,15 +382,40 @@ public class GrowthConfigService {
         addSystemPet(routes, "sys_frost_dew_fox", "寒霜妖狐", "frost_dew_fox");
         addSystemPet(routes, "sys_rock_crystal_lion", "岩晶狮", "rock_crystal_lion");
 
+        // --- Newly Added System Pets ---
+        addSystemPet(routes, "sys_warm_dog", "暖绒金犬", "warm_dog");
+        addSystemPet(routes, "sys_prism_fox", "幻彩灵狐", "prism_fox");
+        addSystemPet(routes, "sys_amber_wolf", "琥珀战狼", "amber_wolf");
+        addSystemPet(routes, "sys_star_wolf", "星芒灵狼", "star_wolf");
+        addSystemPet(routes, "sys_rain_fox", "彩光萌狐", "rain_fox");
+        addSystemPet(routes, "sys_moon_fox", "幽月青狐", "moon_fox");
+        addSystemPet(routes, "sys_mint_unicorn", "薄荷独角兽", "mint_unicorn");
+
         return new ResolvedGrowthConfig(levelItems, overflowStep, expGainRatio, evolution, routes, false);
     }
 
     private void addSystemPet(List<PetRoute> routes, String id, String name, String folder) {
         List<PetStage> stages = new ArrayList<>();
-        stages.add(new PetStage(1, "/uploads/system/" + folder + "/1.png"));
-        stages.add(new PetStage(2, "/uploads/system/" + folder + "/2.png"));
-        stages.add(new PetStage(3, "/uploads/system/" + folder + "/3.png"));
+        stages.add(new PetStage(1, resolveSystemStageImage(folder, 1)));
+        stages.add(new PetStage(2, resolveSystemStageImage(folder, 2)));
+        stages.add(new PetStage(3, resolveSystemStageImage(folder, 3)));
         routes.add(new PetRoute(id, sanitizePetRouteName(name), true, stages));
+    }
+
+    private String resolveSystemStageImage(String folder, int stage) {
+        String safeFolder = trim(folder);
+        if (safeFolder.isEmpty()) {
+            return "";
+        }
+        String stageFileName = String.valueOf(stage);
+        File root = new File(uploadDir, "system");
+        for (String ext : SYSTEM_IMAGE_EXTENSIONS) {
+            File file = new File(new File(root, safeFolder), stageFileName + "." + ext);
+            if (file.exists()) {
+                return "/uploads/system/" + safeFolder + "/" + stageFileName + "." + ext;
+            }
+        }
+        return "/uploads/system/" + safeFolder + "/" + stageFileName + ".png";
     }
 
     private List<LevelItem> sanitizeLevelItems(List<LevelItem> input) {
