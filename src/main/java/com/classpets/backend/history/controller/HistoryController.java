@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 import com.classpets.backend.history.vo.HistoryLogVO;
+import com.classpets.backend.history.vo.HistoryPageVO;
 import com.classpets.backend.history.service.HistoryUndoService;
 import com.classpets.backend.entity.Student;
 import com.classpets.backend.entity.GroupInfo;
@@ -40,37 +41,30 @@ public class HistoryController {
     }
 
     @GetMapping
-    public ApiResponse<List<HistoryLogVO>> getHistory(
+    public ApiResponse<HistoryPageVO> getHistory(
             @PathVariable Long classId,
             @RequestParam(required = false) Long studentId,
-            @RequestParam(required = false) String reason) {
+            @RequestParam(required = false) String reason,
+            @RequestParam(required = false) Long from,
+            @RequestParam(required = false) Long to,
+            @RequestParam(defaultValue = "1") Integer page,
+            @RequestParam(defaultValue = "20") Integer size) {
 
         if (!classInfoService.isOwnedByCurrentTeacher(classId)) {
             throw new BizException(40301, "无权访问此班级");
         }
 
-        LambdaQueryWrapper<StudentEvent> wrapper = new LambdaQueryWrapper<>();
-        wrapper.eq(StudentEvent::getClassId, classId);
+        int safePage = page == null || page < 1 ? 1 : page;
+        int safeSize = size == null || size < 1 ? 20 : Math.min(size, 100);
+        long offset = (long) (safePage - 1) * safeSize;
 
-        if (studentId != null) {
-            wrapper.eq(StudentEvent::getStudentId, studentId);
-        }
-        if (reason != null && !reason.isEmpty()) {
-            wrapper.like(StudentEvent::getReason, reason);
-        }
+        LambdaQueryWrapper<StudentEvent> baseWrapper = buildHistoryWrapper(classId, studentId, reason, from, to);
+        Long total = studentEventMapper.selectCount(baseWrapper);
 
-        wrapper.orderByDesc(StudentEvent::getTimestamp);
-        wrapper.last("LIMIT 100");
+        LambdaQueryWrapper<StudentEvent> wrapper = buildHistoryWrapper(classId, studentId, reason, from, to);
+        wrapper.last("LIMIT " + offset + "," + safeSize);
 
-        List<StudentEvent> events = studentEventMapper.selectList(wrapper).stream()
-                .filter(event -> {
-                    String note = event.getNote();
-                    if (note == null || note.isEmpty()) {
-                        return true;
-                    }
-                    return !note.contains("undoFromEventId=") && !note.contains("undoRedemptionRecordId=");
-                })
-                .collect(Collectors.toList());
+        List<StudentEvent> events = studentEventMapper.selectList(wrapper);
 
         // Fetch related data
         List<Long> studentIds = events.stream().map(StudentEvent::getStudentId).distinct().collect(Collectors.toList());
@@ -114,7 +108,37 @@ public class HistoryController {
             return vo;
         }).collect(Collectors.toList());
 
-        return ApiResponse.ok(logs);
+        HistoryPageVO pageVO = new HistoryPageVO();
+        pageVO.setRecords(logs);
+        pageVO.setTotal(total == null ? 0 : total);
+        pageVO.setPage(safePage);
+        pageVO.setSize(safeSize);
+
+        return ApiResponse.ok(pageVO);
+    }
+
+    private LambdaQueryWrapper<StudentEvent> buildHistoryWrapper(Long classId, Long studentId, String reason, Long from, Long to) {
+        LambdaQueryWrapper<StudentEvent> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(StudentEvent::getClassId, classId);
+
+        if (studentId != null) {
+            wrapper.eq(StudentEvent::getStudentId, studentId);
+        }
+        if (reason != null && !reason.isEmpty()) {
+            wrapper.like(StudentEvent::getReason, reason);
+        }
+        if (from != null) {
+            wrapper.ge(StudentEvent::getTimestamp, from);
+        }
+        if (to != null) {
+            wrapper.le(StudentEvent::getTimestamp, to);
+        }
+
+        wrapper.apply("(note IS NULL OR note = '' OR (note NOT LIKE {0} AND note NOT LIKE {1}))",
+                "%undoFromEventId=%", "%undoRedemptionRecordId=%");
+        wrapper.orderByDesc(StudentEvent::getTimestamp);
+        wrapper.orderByDesc(StudentEvent::getId);
+        return wrapper;
     }
 
     private boolean isNonUndoableEvent(StudentEvent event) {

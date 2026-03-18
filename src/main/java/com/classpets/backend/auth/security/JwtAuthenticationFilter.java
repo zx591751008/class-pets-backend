@@ -7,6 +7,8 @@ import org.springframework.security.web.authentication.WebAuthenticationDetailsS
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.springframework.web.filter.OncePerRequestFilter;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import javax.servlet.FilterChain;
 import javax.servlet.ServletException;
@@ -15,6 +17,7 @@ import javax.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.util.Collections;
 import java.nio.charset.StandardCharsets;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.springframework.data.redis.core.StringRedisTemplate;
 import java.util.concurrent.TimeUnit;
@@ -27,6 +30,9 @@ import com.classpets.backend.mapper.TeacherDeviceTokenMapper;
 
 @Component
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
+
+    private static final Logger log = LoggerFactory.getLogger(JwtAuthenticationFilter.class);
+    private static final AtomicBoolean REDIS_WARNED = new AtomicBoolean(false);
 
     private final JwtUtil jwtUtil;
     private final TeacherDeviceTokenMapper teacherDeviceTokenMapper;
@@ -66,7 +72,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 redisTemplate.expire(redisKey, 4, TimeUnit.HOURS);
             } catch (Exception e) {
                 // Redis is optional for local dev / reliability
-                System.err.println("Redis Unavailable: Skipping session check (" + e.getMessage() + ")");
+                if (REDIS_WARNED.compareAndSet(false, true)) {
+                    log.warn("Redis unavailable, skip session check: {}", e.getMessage());
+                } else {
+                    log.debug("Redis unavailable, skip session check: {}", e.getMessage());
+                }
             }
 
             String username = jwtUtil.getUsernameFromToken(token);

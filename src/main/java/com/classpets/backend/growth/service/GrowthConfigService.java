@@ -390,6 +390,11 @@ public class GrowthConfigService {
         addSystemPet(routes, "sys_rain_fox", "彩光萌狐", "rain_fox");
         addSystemPet(routes, "sys_moon_fox", "幽月青狐", "moon_fox");
         addSystemPet(routes, "sys_mint_unicorn", "薄荷独角兽", "mint_unicorn");
+        addSystemPet(routes, "sys_white_flame", "白焰", "white_flame");
+        addSystemPet(routes, "sys_radiantflame_capybara", "曜焰水豚", "radiantflame_capybara");
+        addSystemPet(routes, "sys_frostblade_unicorn", "霜刃独角兽", "frostblade_unicorn");
+        addSystemPet(routes, "sys_magma_sugarbeast", "熔岩糖兽", "magma_sugarbeast");
+        addSystemPet(routes, "sys_creamblossom_sprite", "奶霜花灵", "creamblossom_sprite");
 
         return new ResolvedGrowthConfig(levelItems, overflowStep, expGainRatio, evolution, routes, false);
     }
@@ -499,7 +504,7 @@ public class GrowthConfigService {
             if (name.isEmpty()) {
                 name = "路线" + (i + 1);
             }
-            boolean enabled = route.enabled == null || route.enabled;
+            boolean enabled = true;
             List<PetStage> stages = normalizeStages(route.stages);
             safeRoutes.add(new PetRoute(id, name, enabled, stages));
         }
