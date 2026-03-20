@@ -2,7 +2,9 @@
 /target/
 
 # Runtime uploads and generated assets
-/uploads/
+/uploads/*
+!/uploads/system/
+!/uploads/system/**
 
 # Java artifacts
 *.class
