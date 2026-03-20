@@ -93,7 +93,7 @@ public class GrowthConfigService {
 
         config.setLevels(toLevelsJson(levelItems, overflowStep, expGainRatio));
         config.setEvolution(toEvolutionJson(evolution));
-        config.setPets(toPetsJson(petRoutes));
+        config.setPets(toPetsJson(petRoutes, config.getPets()));
 
         if (config.getId() == null) {
             classConfigMapper.insert(config);
@@ -315,8 +315,26 @@ public class GrowthConfigService {
         }
     }
 
-    private String toPetsJson(List<PetRoute> petRoutes) {
+    private String toPetsJson(List<PetRoute> petRoutes, String existingPetsJson) {
         Map<String, Object> payload = new LinkedHashMap<>();
+        String existing = trim(existingPetsJson);
+        if (!existing.isEmpty()) {
+            try {
+                JsonNode root = objectMapper.readTree(existing);
+                if (root != null && root.isObject()) {
+                    java.util.Iterator<Map.Entry<String, JsonNode>> fields = root.fields();
+                    while (fields.hasNext()) {
+                        Map.Entry<String, JsonNode> entry = fields.next();
+                        if ("routes".equals(entry.getKey())) {
+                            continue;
+                        }
+                        payload.put(entry.getKey(), objectMapper.convertValue(entry.getValue(), Object.class));
+                    }
+                }
+            } catch (Exception ignore) {
+                // ignore malformed legacy payload
+            }
+        }
         payload.put("routes", toPetRoutePayload(petRoutes));
         try {
             return objectMapper.writeValueAsString(payload);

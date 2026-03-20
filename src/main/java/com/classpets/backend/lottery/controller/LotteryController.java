@@ -3,15 +3,18 @@ package com.classpets.backend.lottery.controller;
 import com.classpets.backend.common.ApiResponse;
 import com.classpets.backend.lottery.dto.InventoryUseRequest;
 import com.classpets.backend.lottery.dto.LotteryDrawRequest;
+import com.classpets.backend.lottery.dto.LotteryPrizeConfigUpdateRequest;
 import com.classpets.backend.lottery.service.LotteryService;
 import com.classpets.backend.lottery.vo.DeductibleEventVO;
 import com.classpets.backend.lottery.vo.LotteryDrawResultVO;
+import com.classpets.backend.lottery.vo.LotteryPrizeVO;
 import com.classpets.backend.lottery.vo.LotteryRecordVO;
 import com.classpets.backend.lottery.vo.StudentInventoryVO;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -37,6 +40,18 @@ public class LotteryController {
     @GetMapping("/classes/{classId}/lottery-records")
     public ApiResponse<List<LotteryRecordVO>> listClassLotteryRecords(@PathVariable Long classId) {
         return ApiResponse.ok(lotteryService.listClassRecords(classId));
+    }
+
+    @GetMapping("/classes/{classId}/lottery/prizes")
+    public ApiResponse<List<LotteryPrizeVO>> listClassLotteryPrizes(@PathVariable Long classId) {
+        return ApiResponse.ok(lotteryService.listClassPrizes(classId));
+    }
+
+    @PutMapping("/classes/{classId}/lottery/prizes")
+    public ApiResponse<List<LotteryPrizeVO>> updateClassLotteryPrizes(
+            @PathVariable Long classId,
+            @RequestBody(required = false) LotteryPrizeConfigUpdateRequest request) {
+        return ApiResponse.ok(lotteryService.updateClassPrizes(classId, request == null ? null : request.getItems()));
     }
 
     @GetMapping("/students/{studentId}/lottery-records")

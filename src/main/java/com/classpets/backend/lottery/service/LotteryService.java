@@ -3,6 +3,7 @@ package com.classpets.backend.lottery.service;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.classpets.backend.classinfo.service.ClassInfoService;
 import com.classpets.backend.common.BizException;
+import com.classpets.backend.entity.ClassConfig;
 import com.classpets.backend.entity.InventoryUseRecord;
 import com.classpets.backend.entity.LotteryDrawRecord;
 import com.classpets.backend.entity.Student;
@@ -12,10 +13,13 @@ import com.classpets.backend.entity.StudentPetGallery;
 import com.classpets.backend.growth.service.GrowthConfigService;
 import com.classpets.backend.history.service.HistoryUndoService;
 import com.classpets.backend.lottery.dto.InventoryUseRequest;
+import com.classpets.backend.lottery.dto.LotteryPrizeConfigItemDTO;
 import com.classpets.backend.lottery.vo.DeductibleEventVO;
 import com.classpets.backend.lottery.vo.LotteryDrawResultVO;
+import com.classpets.backend.lottery.vo.LotteryPrizeVO;
 import com.classpets.backend.lottery.vo.LotteryRecordVO;
 import com.classpets.backend.lottery.vo.StudentInventoryVO;
+import com.classpets.backend.mapper.ClassConfigMapper;
 import com.classpets.backend.mapper.InventoryUseRecordMapper;
 import com.classpets.backend.mapper.LotteryDrawRecordMapper;
 import com.classpets.backend.mapper.StudentEventMapper;
@@ -24,13 +28,19 @@ import com.classpets.backend.mapper.StudentMapper;
 import com.classpets.backend.mapper.StudentPetGalleryMapper;
 import com.classpets.backend.student.service.AbandonedPetService;
 import com.classpets.backend.sync.SyncEventService;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.stream.Collectors;
 
@@ -40,8 +50,13 @@ public class LotteryService {
     private static final int SINGLE_DRAW_COST = 20;
     private static final String ITEM_STATUS_ACTIVE = "ACTIVE";
     private static final String ITEM_SHIELD = "SHIELD";
+    private static final String LOTTERY_PRIZES_KEY = "lotteryPrizes";
+    private static final Set<String> EDITABLE_PRIZE_CODES = new HashSet<>(Arrays.asList("CLEAN_PASS", "SONG_CARD", "SPEAK_STICK"));
+    private static final TypeReference<Map<String, PrizeConfigEntry>> PRIZE_CONFIG_TYPE = new TypeReference<Map<String, PrizeConfigEntry>>() {
+    };
 
     private final ClassInfoService classInfoService;
+    private final ClassConfigMapper classConfigMapper;
     private final StudentMapper studentMapper;
     private final StudentEventMapper studentEventMapper;
     private final LotteryDrawRecordMapper lotteryDrawRecordMapper;
@@ -52,8 +67,10 @@ public class LotteryService {
     private final GrowthConfigService growthConfigService;
     private final StudentPetGalleryMapper studentPetGalleryMapper;
     private final AbandonedPetService abandonedPetService;
+    private final ObjectMapper objectMapper;
 
     public LotteryService(ClassInfoService classInfoService,
+            ClassConfigMapper classConfigMapper,
             StudentMapper studentMapper,
             StudentEventMapper studentEventMapper,
             LotteryDrawRecordMapper lotteryDrawRecordMapper,
@@ -63,8 +80,10 @@ public class LotteryService {
             SyncEventService syncEventService,
             GrowthConfigService growthConfigService,
             StudentPetGalleryMapper studentPetGalleryMapper,
-            AbandonedPetService abandonedPetService) {
+            AbandonedPetService abandonedPetService,
+            ObjectMapper objectMapper) {
         this.classInfoService = classInfoService;
+        this.classConfigMapper = classConfigMapper;
         this.studentMapper = studentMapper;
         this.studentEventMapper = studentEventMapper;
         this.lotteryDrawRecordMapper = lotteryDrawRecordMapper;
@@ -75,6 +94,7 @@ public class LotteryService {
         this.growthConfigService = growthConfigService;
         this.studentPetGalleryMapper = studentPetGalleryMapper;
         this.abandonedPetService = abandonedPetService;
+        this.objectMapper = objectMapper;
     }
 
     @Transactional
@@ -90,7 +110,7 @@ public class LotteryService {
             throw new BizException(40002, "余额不足，需要 " + SINGLE_DRAW_COST + " 积分");
         }
 
-        Prize prize = randomPrize();
+        Prize prize = randomPrize(classId);
         long now = System.currentTimeMillis();
 
         student.setRedeemPoints(redeem - SINGLE_DRAW_COST);
@@ -199,6 +219,39 @@ public class LotteryService {
                 .last("limit 100")).stream().map(row -> toRecordVO(row, student.getName())).collect(Collectors.toList());
     }
 
+    public List<LotteryPrizeVO> listClassPrizes(Long classId) {
+        ensureClassOwnership(classId);
+        List<Prize> effectivePrizes = getEffectivePrizes(classId);
+        return effectivePrizes.stream().map(this::toPrizeVO).collect(Collectors.toList());
+    }
+
+    @Transactional
+    public List<LotteryPrizeVO> updateClassPrizes(Long classId, List<LotteryPrizeConfigItemDTO> items) {
+        ensureClassOwnership(classId);
+        Map<String, PrizeConfigEntry> overrides = loadPrizeConfig(classId);
+
+        if (items != null) {
+            for (LotteryPrizeConfigItemDTO item : items) {
+                if (item == null) {
+                    continue;
+                }
+                String code = trim(item.getCode()).toUpperCase();
+                if (!EDITABLE_PRIZE_CODES.contains(code)) {
+                    throw new BizException(40001, "仅允许编辑虚拟奖品");
+                }
+                PrizeConfigEntry entry = overrides.getOrDefault(code, new PrizeConfigEntry());
+                entry.name = sanitizePrizeName(item.getName());
+                entry.icon = sanitizePrizeIcon(item.getIcon());
+                entry.note = sanitizePrizeNote(item.getNote());
+                entry.enabled = item.getEnabled() == null ? true : Boolean.TRUE.equals(item.getEnabled());
+                overrides.put(code, entry);
+            }
+        }
+
+        savePrizeConfig(classId, overrides);
+        return listClassPrizes(classId);
+    }
+
     public List<StudentInventoryVO> listInventory(Long studentId) {
         Student student = mustGetStudent(studentId);
         ensureClassOwnership(student.getClassId());
@@ -305,6 +358,20 @@ public class LotteryService {
             rewardEvent.setTimestamp(System.currentTimeMillis());
             rewardEvent.setRevoked(0);
             studentEventMapper.insert(rewardEvent);
+        } else if ("CLEAN_PASS".equals(inventory.getItemCode())
+                || "SONG_CARD".equals(inventory.getItemCode())
+                || "SPEAK_STICK".equals(inventory.getItemCode())) {
+            StudentEvent virtualUseEvent = new StudentEvent();
+            virtualUseEvent.setClassId(student.getClassId());
+            virtualUseEvent.setStudentId(studentId);
+            virtualUseEvent.setReason("使用道具：" + trim(inventory.getItemName()));
+            virtualUseEvent.setChangeValue(0);
+            virtualUseEvent.setRedeemChange(0);
+            virtualUseEvent.setExpChange(0);
+            virtualUseEvent.setNote("noUndo=1");
+            virtualUseEvent.setTimestamp(System.currentTimeMillis());
+            virtualUseEvent.setRevoked(0);
+            studentEventMapper.insert(virtualUseEvent);
         }
 
         long now = System.currentTimeMillis();
@@ -507,8 +574,11 @@ public class LotteryService {
         return vo;
     }
 
-    private Prize randomPrize() {
-        List<Prize> prizes = PRIZES;
+    private Prize randomPrize(Long classId) {
+        List<Prize> prizes = getEffectivePrizes(classId);
+        if (prizes.isEmpty()) {
+            prizes = PRIZES;
+        }
         int total = prizes.stream().mapToInt(p -> p.weight).sum();
         int hit = ThreadLocalRandom.current().nextInt(total);
         int sum = 0;
@@ -521,16 +591,165 @@ public class LotteryService {
         return prizes.get(prizes.size() - 1);
     }
 
+    private List<Prize> getEffectivePrizes(Long classId) {
+        Map<String, PrizeConfigEntry> overrides = loadPrizeConfig(classId);
+        List<Prize> effective = new java.util.ArrayList<>();
+        for (Prize base : PRIZES) {
+            PrizeConfigEntry override = overrides.get(base.code);
+            String name = base.name;
+            String icon = base.icon;
+            String note = base.note;
+            boolean enabled = true;
+
+            if (override != null && base.editable) {
+                if (!trim(override.name).isEmpty()) {
+                    name = trim(override.name);
+                }
+                if (!trim(override.icon).isEmpty()) {
+                    icon = trim(override.icon);
+                }
+                if (!trim(override.note).isEmpty()) {
+                    note = trim(override.note);
+                }
+                enabled = override.enabled == null || Boolean.TRUE.equals(override.enabled);
+            }
+
+            if (!enabled) {
+                continue;
+            }
+
+            effective.add(new Prize(base.code, name, base.rarity, icon, base.weight, base.itemCode, base.redeemReward, note, base.editable));
+        }
+        return effective;
+    }
+
+    private LotteryPrizeVO toPrizeVO(Prize prize) {
+        LotteryPrizeVO vo = new LotteryPrizeVO();
+        vo.setCode(prize.code);
+        vo.setName(prize.name);
+        vo.setRarity(prize.rarity);
+        vo.setIcon(prize.icon);
+        vo.setNote(prize.note);
+        vo.setWeight(prize.weight);
+        vo.setEnabled(true);
+        vo.setEditable(prize.editable);
+        return vo;
+    }
+
+    private Map<String, PrizeConfigEntry> loadPrizeConfig(Long classId) {
+        ClassConfig config = classConfigMapper.selectOne(new LambdaQueryWrapper<ClassConfig>()
+                .eq(ClassConfig::getClassId, classId)
+                .last("LIMIT 1"));
+        if (config == null || trim(config.getPets()).isEmpty()) {
+            return new HashMap<>();
+        }
+        try {
+            JsonNode root = objectMapper.readTree(config.getPets());
+            if (root == null || !root.isObject()) {
+                return new HashMap<>();
+            }
+            JsonNode node = root.get(LOTTERY_PRIZES_KEY);
+            if (node == null || node.isNull() || !node.isObject()) {
+                return new HashMap<>();
+            }
+            Map<String, PrizeConfigEntry> parsed = objectMapper.convertValue(node, PRIZE_CONFIG_TYPE);
+            return parsed == null ? new HashMap<>() : parsed;
+        } catch (Exception ex) {
+            return new HashMap<>();
+        }
+    }
+
+    private void savePrizeConfig(Long classId, Map<String, PrizeConfigEntry> overrides) {
+        ClassConfig config = classConfigMapper.selectOne(new LambdaQueryWrapper<ClassConfig>()
+                .eq(ClassConfig::getClassId, classId)
+                .last("LIMIT 1"));
+        if (config == null) {
+            config = new ClassConfig();
+            config.setClassId(classId);
+        }
+
+        Map<String, Object> petsPayload = new LinkedHashMap<>();
+        String petsJson = trim(config.getPets());
+        if (!petsJson.isEmpty()) {
+            try {
+                JsonNode root = objectMapper.readTree(petsJson);
+                if (root != null && root.isObject()) {
+                    java.util.Iterator<Map.Entry<String, JsonNode>> fields = root.fields();
+                    while (fields.hasNext()) {
+                        Map.Entry<String, JsonNode> entry = fields.next();
+                        if (LOTTERY_PRIZES_KEY.equals(entry.getKey())) {
+                            continue;
+                        }
+                        petsPayload.put(entry.getKey(), objectMapper.convertValue(entry.getValue(), Object.class));
+                    }
+                }
+            } catch (Exception ignore) {
+                // keep empty payload
+            }
+        }
+
+        Map<String, PrizeConfigEntry> sanitized = new HashMap<>();
+        for (String code : EDITABLE_PRIZE_CODES) {
+            PrizeConfigEntry source = overrides.get(code);
+            if (source == null) {
+                continue;
+            }
+            PrizeConfigEntry entry = new PrizeConfigEntry();
+            entry.name = sanitizePrizeName(source.name);
+            entry.icon = sanitizePrizeIcon(source.icon);
+            entry.note = sanitizePrizeNote(source.note);
+            entry.enabled = source.enabled == null ? true : Boolean.TRUE.equals(source.enabled);
+            sanitized.put(code, entry);
+        }
+
+        petsPayload.put(LOTTERY_PRIZES_KEY, sanitized);
+        try {
+            config.setPets(objectMapper.writeValueAsString(petsPayload));
+        } catch (Exception ex) {
+            throw new BizException(50001, "保存抽奖奖品配置失败");
+        }
+
+        if (config.getId() == null) {
+            classConfigMapper.insert(config);
+        } else {
+            classConfigMapper.updateById(config);
+        }
+    }
+
+    private String sanitizePrizeName(String value) {
+        String v = trim(value);
+        if (v.length() > 20) {
+            v = v.substring(0, 20);
+        }
+        return v;
+    }
+
+    private String sanitizePrizeIcon(String value) {
+        String v = trim(value);
+        if (v.length() > 8) {
+            v = v.substring(0, 8);
+        }
+        return v;
+    }
+
+    private String sanitizePrizeNote(String value) {
+        String v = trim(value);
+        if (v.length() > 64) {
+            v = v.substring(0, 64);
+        }
+        return v;
+    }
+
     private static final List<Prize> PRIZES = Arrays.asList(
-            new Prize("CANDY", "魔法糖果", "common", "🍬", 24, "CANDY", 0),
-            new Prize("BALANCE_BAG", "余额福袋", "common", "💰", 21, "BALANCE_BAG", 0),
-            new Prize("CLEAN_PASS", "劳动豁免券", "common", "🧹", 18, "CLEAN_PASS", 0),
-            new Prize("MEAT", "超级烤肉", "rare", "🍗", 12, "MEAT", 0),
-            new Prize("SHIELD", "免死金牌", "rare", "🛡️", 10, ITEM_SHIELD, 0),
-            new Prize("SONG_CARD", "讲台点歌卡", "rare", "🎵", 8, "SONG_CARD", 0),
-            new Prize("AMNESIA", "遗忘果实", "epic", "🍎", 4, "AMNESIA", 0),
-            new Prize("SPEAK_STICK", "发言指定棒", "epic", "👑", 2, "SPEAK_STICK", 0),
-            new Prize("BIG_BURST", "经验大爆雪", "epic", "💥", 1, "BIG_BURST", 0));
+            new Prize("CANDY", "魔法糖果", "common", "🍬", 24, "CANDY", 0, "宠物经验 +25", false),
+            new Prize("BALANCE_BAG", "余额福袋", "common", "💰", 21, "BALANCE_BAG", 0, "余额 +10", false),
+            new Prize("CLEAN_PASS", "劳动豁免券", "common", "🧹", 18, "CLEAN_PASS", 0, "抵扣一次值日", true),
+            new Prize("MEAT", "超级烤肉", "rare", "🍗", 12, "MEAT", 0, "宠物经验 +70", false),
+            new Prize("SHIELD", "免死金牌", "rare", "🛡️", 10, ITEM_SHIELD, 0, "抵扣一次扣分", false),
+            new Prize("SONG_CARD", "讲台点歌卡", "rare", "🎵", 8, "SONG_CARD", 0, "课间点歌一次", true),
+            new Prize("AMNESIA", "遗忘果实", "epic", "🍎", 4, "AMNESIA", 0, "宠物重选路线道具", false),
+            new Prize("SPEAK_STICK", "发言指定棒", "epic", "👑", 2, "SPEAK_STICK", 0, "指定同学代答一次", true),
+            new Prize("BIG_BURST", "经验大爆雪", "epic", "💥", 1, "BIG_BURST", 0, "EXP+200 / 余额+100", false));
 
     private static class Prize {
         private final String code;
@@ -540,8 +759,11 @@ public class LotteryService {
         private final int weight;
         private final String itemCode;
         private final int redeemReward;
+        private final String note;
+        private final boolean editable;
 
-        private Prize(String code, String name, String rarity, String icon, int weight, String itemCode, int redeemReward) {
+        private Prize(String code, String name, String rarity, String icon, int weight, String itemCode, int redeemReward,
+                String note, boolean editable) {
             this.code = code;
             this.name = name;
             this.rarity = rarity;
@@ -549,6 +771,15 @@ public class LotteryService {
             this.weight = weight;
             this.itemCode = itemCode;
             this.redeemReward = redeemReward;
+            this.note = note;
+            this.editable = editable;
         }
+    }
+
+    private static class PrizeConfigEntry {
+        public String name;
+        public String icon;
+        public String note;
+        public Boolean enabled;
     }
 }
