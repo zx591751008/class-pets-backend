@@ -51,6 +51,7 @@ public class LotteryService {
     private static final String ITEM_STATUS_ACTIVE = "ACTIVE";
     private static final String ITEM_SHIELD = "SHIELD";
     private static final String LOTTERY_PRIZES_KEY = "lotteryPrizes";
+    private static final String LOTTERY_SINGLE_DRAW_COST_KEY = "lotterySingleDrawCost";
     private static final Set<String> EDITABLE_PRIZE_CODES = new HashSet<>(Arrays.asList("CLEAN_PASS", "SONG_CARD", "SPEAK_STICK"));
     private static final TypeReference<Map<String, PrizeConfigEntry>> PRIZE_CONFIG_TYPE = new TypeReference<Map<String, PrizeConfigEntry>>() {
     };
@@ -106,21 +107,22 @@ public class LotteryService {
         }
 
         int redeem = safe(student.getRedeemPoints());
-        if (redeem < SINGLE_DRAW_COST) {
-            throw new BizException(40002, "余额不足，需要 " + SINGLE_DRAW_COST + " 积分");
+        int singleDrawCost = getSingleDrawCost(classId);
+        if (redeem < singleDrawCost) {
+            throw new BizException(40002, "余额不足，需要 " + singleDrawCost + " 积分");
         }
 
         Prize prize = randomPrize(classId);
         long now = System.currentTimeMillis();
 
-        student.setRedeemPoints(redeem - SINGLE_DRAW_COST);
+        student.setRedeemPoints(redeem - singleDrawCost);
 
         StudentEvent costEvent = new StudentEvent();
         costEvent.setClassId(classId);
         costEvent.setStudentId(studentId);
         costEvent.setReason("九宫格抽奖单抽");
         costEvent.setChangeValue(0);
-        costEvent.setRedeemChange(-SINGLE_DRAW_COST);
+        costEvent.setRedeemChange(-singleDrawCost);
         costEvent.setExpChange(0);
         costEvent.setTimestamp(now);
         costEvent.setRevoked(0);
@@ -170,7 +172,7 @@ public class LotteryService {
         drawRecord.setPrizeCode(prize.code);
         drawRecord.setPrizeName(prize.name);
         drawRecord.setRarity(prize.rarity);
-        drawRecord.setCostRedeem(SINGLE_DRAW_COST);
+        drawRecord.setCostRedeem(singleDrawCost);
         drawRecord.setRewardRedeem(rewardRedeem);
         drawRecord.setInventoryItemCode(inventoryItemCode);
         drawRecord.setInventoryItemName(inventoryItemName);
@@ -185,7 +187,7 @@ public class LotteryService {
         vo.setPrizeName(prize.name);
         vo.setRarity(prize.rarity);
         vo.setIcon(prize.icon);
-        vo.setCostRedeem(SINGLE_DRAW_COST);
+        vo.setCostRedeem(singleDrawCost);
         vo.setRewardRedeem(rewardRedeem);
         vo.setAddedToInventory(inventoryId != null);
         vo.setInventoryId(inventoryId);
@@ -222,11 +224,12 @@ public class LotteryService {
     public List<LotteryPrizeVO> listClassPrizes(Long classId) {
         ensureClassOwnership(classId);
         List<Prize> effectivePrizes = getEffectivePrizes(classId);
-        return effectivePrizes.stream().map(this::toPrizeVO).collect(Collectors.toList());
+        int singleDrawCost = getSingleDrawCost(classId);
+        return effectivePrizes.stream().map(prize -> toPrizeVO(prize, singleDrawCost)).collect(Collectors.toList());
     }
 
     @Transactional
-    public List<LotteryPrizeVO> updateClassPrizes(Long classId, List<LotteryPrizeConfigItemDTO> items) {
+    public List<LotteryPrizeVO> updateClassPrizes(Long classId, List<LotteryPrizeConfigItemDTO> items, Integer singleDrawCost) {
         ensureClassOwnership(classId);
         Map<String, PrizeConfigEntry> overrides = loadPrizeConfig(classId);
 
@@ -243,12 +246,12 @@ public class LotteryService {
                 entry.name = sanitizePrizeName(item.getName());
                 entry.icon = sanitizePrizeIcon(item.getIcon());
                 entry.note = sanitizePrizeNote(item.getNote());
-                entry.enabled = item.getEnabled() == null ? true : Boolean.TRUE.equals(item.getEnabled());
+                entry.enabled = true;
                 overrides.put(code, entry);
             }
         }
 
-        savePrizeConfig(classId, overrides);
+        savePrizeConfig(classId, overrides, singleDrawCost);
         return listClassPrizes(classId);
     }
 
@@ -611,7 +614,7 @@ public class LotteryService {
                 if (!trim(override.note).isEmpty()) {
                     note = trim(override.note);
                 }
-                enabled = override.enabled == null || Boolean.TRUE.equals(override.enabled);
+                enabled = true;
             }
 
             if (!enabled) {
@@ -623,7 +626,7 @@ public class LotteryService {
         return effective;
     }
 
-    private LotteryPrizeVO toPrizeVO(Prize prize) {
+    private LotteryPrizeVO toPrizeVO(Prize prize, int singleDrawCost) {
         LotteryPrizeVO vo = new LotteryPrizeVO();
         vo.setCode(prize.code);
         vo.setName(prize.name);
@@ -631,9 +634,32 @@ public class LotteryService {
         vo.setIcon(prize.icon);
         vo.setNote(prize.note);
         vo.setWeight(prize.weight);
+        vo.setSingleDrawCost(singleDrawCost);
         vo.setEnabled(true);
         vo.setEditable(prize.editable);
         return vo;
+    }
+
+    private int getSingleDrawCost(Long classId) {
+        ClassConfig config = classConfigMapper.selectOne(new LambdaQueryWrapper<ClassConfig>()
+                .eq(ClassConfig::getClassId, classId)
+                .last("LIMIT 1"));
+        if (config == null || trim(config.getPets()).isEmpty()) {
+            return SINGLE_DRAW_COST;
+        }
+        try {
+            JsonNode root = objectMapper.readTree(config.getPets());
+            if (root == null || !root.isObject()) {
+                return SINGLE_DRAW_COST;
+            }
+            JsonNode node = root.get(LOTTERY_SINGLE_DRAW_COST_KEY);
+            if (node == null || node.isNull()) {
+                return SINGLE_DRAW_COST;
+            }
+            return sanitizeSingleDrawCost(node.asInt(SINGLE_DRAW_COST));
+        } catch (Exception ex) {
+            return SINGLE_DRAW_COST;
+        }
     }
 
     private Map<String, PrizeConfigEntry> loadPrizeConfig(Long classId) {
@@ -659,7 +685,7 @@ public class LotteryService {
         }
     }
 
-    private void savePrizeConfig(Long classId, Map<String, PrizeConfigEntry> overrides) {
+    private void savePrizeConfig(Long classId, Map<String, PrizeConfigEntry> overrides, Integer singleDrawCost) {
         ClassConfig config = classConfigMapper.selectOne(new LambdaQueryWrapper<ClassConfig>()
                 .eq(ClassConfig::getClassId, classId)
                 .last("LIMIT 1"));
@@ -677,7 +703,7 @@ public class LotteryService {
                     java.util.Iterator<Map.Entry<String, JsonNode>> fields = root.fields();
                     while (fields.hasNext()) {
                         Map.Entry<String, JsonNode> entry = fields.next();
-                        if (LOTTERY_PRIZES_KEY.equals(entry.getKey())) {
+                        if (LOTTERY_PRIZES_KEY.equals(entry.getKey()) || LOTTERY_SINGLE_DRAW_COST_KEY.equals(entry.getKey())) {
                             continue;
                         }
                         petsPayload.put(entry.getKey(), objectMapper.convertValue(entry.getValue(), Object.class));
@@ -698,11 +724,12 @@ public class LotteryService {
             entry.name = sanitizePrizeName(source.name);
             entry.icon = sanitizePrizeIcon(source.icon);
             entry.note = sanitizePrizeNote(source.note);
-            entry.enabled = source.enabled == null ? true : Boolean.TRUE.equals(source.enabled);
+            entry.enabled = true;
             sanitized.put(code, entry);
         }
 
         petsPayload.put(LOTTERY_PRIZES_KEY, sanitized);
+        petsPayload.put(LOTTERY_SINGLE_DRAW_COST_KEY, sanitizeSingleDrawCost(singleDrawCost));
         try {
             config.setPets(objectMapper.writeValueAsString(petsPayload));
         } catch (Exception ex) {
@@ -736,6 +763,17 @@ public class LotteryService {
         String v = trim(value);
         if (v.length() > 64) {
             v = v.substring(0, 64);
+        }
+        return v;
+    }
+
+    private int sanitizeSingleDrawCost(Integer value) {
+        int v = value == null ? SINGLE_DRAW_COST : value.intValue();
+        if (v < 1) {
+            return 1;
+        }
+        if (v > 999) {
+            return 999;
         }
         return v;
     }

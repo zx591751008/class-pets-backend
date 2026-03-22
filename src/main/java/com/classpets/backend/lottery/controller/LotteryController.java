@@ -51,7 +51,10 @@ public class LotteryController {
     public ApiResponse<List<LotteryPrizeVO>> updateClassLotteryPrizes(
             @PathVariable Long classId,
             @RequestBody(required = false) LotteryPrizeConfigUpdateRequest request) {
-        return ApiResponse.ok(lotteryService.updateClassPrizes(classId, request == null ? null : request.getItems()));
+        return ApiResponse.ok(lotteryService.updateClassPrizes(
+                classId,
+                request == null ? null : request.getItems(),
+                request == null ? null : request.getSingleDrawCost()));
     }
 
     @GetMapping("/students/{studentId}/lottery-records")

@@ -8,6 +8,7 @@ public class LotteryPrizeVO {
     private String icon;
     private String note;
     private Integer weight;
+    private Integer singleDrawCost;
     private Boolean enabled;
     private Boolean editable;
 
@@ -57,6 +58,14 @@ public class LotteryPrizeVO {
 
     public void setWeight(Integer weight) {
         this.weight = weight;
+    }
+
+    public Integer getSingleDrawCost() {
+        return singleDrawCost;
+    }
+
+    public void setSingleDrawCost(Integer singleDrawCost) {
+        this.singleDrawCost = singleDrawCost;
     }
 
     public Boolean getEnabled() {
